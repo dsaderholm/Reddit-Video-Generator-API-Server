@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  reddit-video-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+      - ./assets:/app/assets
+      - ./results:/app/results
