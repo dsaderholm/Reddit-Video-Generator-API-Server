@@ -2,9 +2,14 @@ version: '3.8'
 
 services:
   reddit-video-api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8461:5000"
+      - "8354:5000"
     volumes:
-      - ./config.toml:/app/config.toml
+      - ./config.toml:/app/config.toml:ro
       - ./assets:/app/assets
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python3", "api.py"]

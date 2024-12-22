@@ -10,91 +10,75 @@ import time
 
 app = Flask(__name__)
 
-# Load config to get subreddit folder name
-def get_results_folder():
-    config = toml.load('config.toml')
-    return config['reddit']['thread']['subreddit']
+TEMP_DIR = "/app/assets/temp"
+RESULTS_DIR = "/app/results"
+CONFIG_PATH = "/app/config.toml"
 
-def cleanup_temp():
-    temp_dir = Path('assets/temp')
-    if temp_dir.exists():
-        shutil.rmtree(temp_dir)
-        temp_dir.mkdir(exist_ok=True)
+def clean_temp():
+    """Clean temporary directory"""
+    if os.path.exists(TEMP_DIR):
+        shutil.rmtree(TEMP_DIR)
+        os.makedirs(TEMP_DIR)
+
+def get_subreddit_path():
+    """Get subreddit path from config"""
+    with open(CONFIG_PATH, 'r') as f:
+        config = toml.load(f)
+    return config['reddit']['thread']['subreddit'].replace('+', '')
+
+def run_video_generator():
+    """Run the main.py script"""
+    subprocess.run(["python3", "main.py"], check=True)
 
 @app.route('/generate', methods=['POST'])
 def generate_video():
-    # Create a unique ID for this generation
-    generation_id = str(uuid.uuid4())
-    
-    # Clean up temp directory
-    cleanup_temp()
-    
-    # Start the video generation in a separate thread
-    def generate():
-        try:
-            subprocess.run(['python3', 'main.py'], check=True)
+    try:
+        # Clean temp directory
+        clean_temp()
+        
+        # Generate unique ID for this run
+        run_id = str(uuid.uuid4())
+        
+        # Run video generator in a separate thread
+        thread = threading.Thread(target=run_video_generator)
+        thread.start()
+        thread.join()  # Wait for completion
+        
+        # Get the generated video
+        subreddit_path = get_subreddit_path()
+        results_dir = os.path.join(RESULTS_DIR, subreddit_path)
+        
+        if not os.path.exists(results_dir):
+            return jsonify({"error": "Video generation failed"}), 500
             
-            # Find the generated video
-            results_dir = Path('results') / get_results_folder()
-            video_files = list(results_dir.glob('*.mp4'))
+        # Find the most recent video file
+        video_files = [f for f in os.listdir(results_dir) if f.endswith('.mp4')]
+        if not video_files:
+            return jsonify({"error": "No video generated"}), 500
             
-            if not video_files:
-                return
-                
-            # Move the latest video to a temporary location with the generation ID
-            latest_video = max(video_files, key=lambda x: x.stat().st_mtime)
-            new_path = Path('assets/temp') / f'{generation_id}.mp4'
-            shutil.move(str(latest_video), str(new_path))
-            
-            # Clean up the results directory
-            if results_dir.exists():
-                shutil.rmtree(results_dir)
-                
-        except Exception as e:
-            print(f"Error generating video: {e}")
+        latest_video = max(video_files, key=lambda f: os.path.getmtime(os.path.join(results_dir, f)))
+        video_path = os.path.join(results_dir, latest_video)
+        
+        # Send the video file
+        response = send_file(
+            video_path,
+            mimetype='video/mp4',
+            as_attachment=True,
+            download_name=f'reddit_video_{run_id}.mp4'
+        )
+        
+        # Clean up after sending
+        os.remove(video_path)
+        clean_temp()
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    thread = threading.Thread(target=generate)
-    thread.start()
-    
-    # Return the generation ID immediately
-    return jsonify({
-        'status': 'processing',
-        'generation_id': generation_id,
-        'message': 'Video generation started. Use /status/<generation_id> to check status and /video/<generation_id> to download when ready.'
-    })
-
-@app.route('/status/<generation_id>', methods=['GET'])
-def check_status(generation_id):
-    video_path = Path('assets/temp') / f'{generation_id}.mp4'
-    
-    if video_path.exists():
-        return jsonify({
-            'status': 'complete',
-            'message': 'Video is ready for download'
-        })
-    else:
-        return jsonify({
-            'status': 'processing',
-            'message': 'Video is still being generated'
-        })
-
-@app.route('/video/<generation_id>', methods=['GET'])
-def get_video(generation_id):
-    video_path = Path('assets/temp') / f'{generation_id}.mp4'
-    
-    if video_path.exists():
-        return send_file(str(video_path), mimetype='video/mp4')
-    else:
-        return jsonify({
-            'status': 'error',
-            'message': 'Video not found or still processing'
-        }), 404
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy"}), 200
 
 if __name__ == '__main__':
-    # Ensure temp directory exists
-    Path('assets/temp').mkdir(parents=True, exist_ok=True)
-    
-    # Clean up temp directory on startup
-    cleanup_temp()
-    
     app.run(host='0.0.0.0', port=5000)
