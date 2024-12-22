@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   reddit-video-api:
     build:
@@ -8,8 +6,14 @@ services:
     ports:
       - "8354:5000"
     volumes:
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/app/config.toml
       - ./assets:/app/assets
     environment:
       - PYTHONUNBUFFERED=1
     command: ["python3", "api.py"]
+    networks:
+      - reddit_network
+
+networks:
+  reddit_network:
+    driver: bridge
