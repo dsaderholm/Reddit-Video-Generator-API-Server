@@ -26,10 +26,6 @@ RUN mkdir -p /app/assets/temp /app/results
 # Make sure the application can write to these directories
 RUN chmod -R 777 /app/assets /app/results
 
-# Verify DNS resolution
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
-
 EXPOSE 5000
 
 CMD ["python3", "api.py"]
