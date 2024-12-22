@@ -40,45 +40,41 @@ def get_subreddit_path():
 def run_video_generator():
     """Run the main.py script"""
     logger.debug("Starting video generator")
-    result = subprocess.run(["python3", "main.py"], 
-                          check=True,
-                          capture_output=True,
-                          text=True)
-    logger.debug(f"Video generator stdout: {result.stdout}")
-    logger.debug(f"Video generator stderr: {result.stderr}")
+    process = subprocess.Popen(
+        ["python3", "main.py"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True
+    )
+    stdout, stderr = process.communicate()
+    logger.debug(f"Video generator output:\n{stdout}")
+    if stderr:
+        logger.error(f"Video generator errors:\n{stderr}")
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, ["python3", "main.py"])
 
 def find_latest_video():
-    """Find the most recently created video file in any subreddit results folder"""
-    subreddits = get_subreddit_path().split('+')
-    latest_video = None
-    latest_time = 0
+    """Find the most recently created video file in the results folder"""
+    subreddits = get_subreddit_path()
+    combined_path = os.path.join(RESULTS_DIR, subreddits)
+    logger.debug(f"Looking for videos in combined path: {combined_path}")
     
-    logger.debug(f"Searching for videos in subreddits: {subreddits}")
-    
-    # First, log all results directories
-    logger.debug(f"Contents of results directory {RESULTS_DIR}:")
-    if os.path.exists(RESULTS_DIR):
-        logger.debug(str(os.listdir(RESULTS_DIR)))
-    else:
-        logger.debug("Results directory does not exist!")
-    
-    for subreddit in subreddits:
-        subreddit_path = os.path.join(RESULTS_DIR, subreddit)
-        logger.debug(f"Checking subreddit path: {subreddit_path}")
+    if os.path.exists(combined_path):
+        logger.debug(f"Contents of combined path: {os.listdir(combined_path)}")
+        video_files = [f for f in os.listdir(combined_path) 
+                      if f.endswith('.mp4') and f != 'background.mp4']
         
-        if os.path.exists(subreddit_path):
-            video_files = glob.glob(os.path.join(subreddit_path, '*.mp4'))
-            logger.debug(f"Found video files in {subreddit}: {video_files}")
-            
-            for video in video_files:
-                file_time = os.path.getmtime(video)
-                logger.debug(f"Video file: {video}, modified time: {file_time}")
-                if file_time > latest_time:
-                    latest_time = file_time
-                    latest_video = video
+        if video_files:
+            latest_video = max(
+                video_files,
+                key=lambda x: os.path.getmtime(os.path.join(combined_path, x))
+            )
+            full_path = os.path.join(combined_path, latest_video)
+            logger.debug(f"Found latest video: {full_path}")
+            return full_path
     
-    logger.debug(f"Latest video found: {latest_video}")
-    return latest_video
+    logger.debug("No video files found")
+    return None
 
 @app.route('/generate', methods=['POST'])
 def generate_video():
