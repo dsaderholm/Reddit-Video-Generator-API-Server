@@ -2,12 +2,9 @@ version: '3.8'
 
 services:
   reddit-video-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     ports:
       - "5000:5000"
     volumes:
-      - ./config.toml:/app/config.toml:ro
+      - ./config.toml:/app/config.toml
       - ./assets:/app/assets
-      - ./results:/app/results
