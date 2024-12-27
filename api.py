@@ -80,59 +80,39 @@ def find_latest_video():
 def generate_video():
     try:
         logger.debug("Starting video generation process")
-        
-        # Clean temp directory
         clean_temp()
-        
-        # Generate unique ID for this run
         run_id = str(uuid.uuid4())
-        logger.debug(f"Generated run ID: {run_id}")
         
-        # Run video generator
-        logger.debug("Starting video generator thread")
         thread = threading.Thread(target=run_video_generator)
         thread.start()
         thread.join()
-        logger.debug("Video generator thread completed")
         
-        # Allow a small delay for file system operations to complete
         time.sleep(2)
-        logger.debug("Waited for file system operations")
-        
-        # Find the latest generated video
         video_path = find_latest_video()
         
         if not video_path:
             logger.error("No video file found after generation")
             return jsonify({"error": "No video file found after generation"}), 500
             
-        logger.debug(f"Found video at path: {video_path}")
-            
+        filename = os.path.basename(video_path)
+        
         try:
-            logger.debug("Attempting to send video file")
-            # Send the video file
             response = send_file(
                 video_path,
                 mimetype='video/mp4',
                 as_attachment=True,
-                download_name=f'reddit_video_{run_id}.mp4'
+                download_name=filename
             )
             
-            # Clean up after sending
-            logger.debug("Cleaning up video file and temp directory")
             os.remove(video_path)
             clean_temp()
             
-            logger.debug("Successfully sent video file")
             return response
             
         except Exception as e:
             logger.error(f"Error sending video: {str(e)}", exc_info=True)
             return jsonify({"error": f"Error sending video: {str(e)}"}), 500
         
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Video generation failed: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Video generation failed: {str(e)}"}), 500
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
