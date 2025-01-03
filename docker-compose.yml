@@ -10,19 +10,25 @@ services:
       - ./assets:/app/assets
     environment:
       - PYTHONUNBUFFERED=1
-      # Add DNS configuration
       - PYTHONIOENCODING=utf8
     dns:
       - 8.8.8.8  # Google's DNS
       - 8.8.4.4  # Google's secondary DNS
     dns_search: ""
     networks:
-      - reddit-network
+      video_generation:
+        ipv4_address: 172.20.0.11  # Different IP from the previous service
+      reddit-network:
+        aliases:
+          - reddit-api
     extra_hosts:
       - "geolocation.onetrust.com:104.18.122.209"
       - "ip.taobao.com:140.205.94.189"
     command: ["python3", "api.py"]
 
 networks:
+  video_generation:
+    external: true
+    name: "Video Generation"
   reddit-network:
     driver: bridge
