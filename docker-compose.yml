@@ -17,7 +17,7 @@ services:
     dns_search: ""
     networks:
       video_generation:
-        ipv4_address: 172.20.0.11  # Different IP from the previous service
+        ipv4_address: 10.20.0.11  # Different IP from the previous service
       reddit-network:
         aliases:
           - reddit-api
