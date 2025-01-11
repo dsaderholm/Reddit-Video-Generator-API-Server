@@ -20,6 +20,7 @@ app = Flask(__name__)
 TEMP_DIR = "/app/assets/temp"
 RESULTS_DIR = "/app/results"
 CONFIG_PATH = "/app/config.toml"
+VIDEO_TIMEOUT = 1200  # 20 minute timeout
 
 def sanitize_filename(filename):
     """
@@ -78,16 +79,28 @@ def run_video_generator():
             stderr=subprocess.PIPE,
             universal_newlines=True
         )
-        stdout, stderr = process.communicate(timeout=300)  # 5 minute timeout
+        
+        # Log periodic updates about the process status
+        start_time = time.time()
+        while process.poll() is None:
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= VIDEO_TIMEOUT:
+                process.kill()
+                raise Exception(f"Video generation timed out after {VIDEO_TIMEOUT//60} minutes")
+            time.sleep(5)  # Check every 5 seconds
+            logger.debug(f"Video generation in progress... ({int(elapsed_time)}s elapsed)")
+
+        stdout, stderr = process.communicate()
         
         logger.debug(f"Video generator output:\n{stdout}")
         if stderr:
             logger.error(f"Video generator errors:\n{stderr}")
         if process.returncode != 0:
             raise subprocess.CalledProcessError(process.returncode, ["python3", "main.py"])
+            
     except subprocess.TimeoutExpired:
         process.kill()
-        raise Exception("Video generation timed out after 5 minutes")
+        raise Exception(f"Video generation timed out after {VIDEO_TIMEOUT//60} minutes")
 
 def find_latest_video():
     """Find the most recently created video file in the results folder"""
