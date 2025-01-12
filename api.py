@@ -22,21 +22,6 @@ RESULTS_DIR = "/app/results"
 CONFIG_PATH = "/app/config.toml"
 VIDEO_TIMEOUT = 1200  # 20 minute timeout
 
-def sanitize_filename(filename):
-    """
-    Sanitize filename to be safe for both filesystem and HTTP headers
-    """
-    # Remove newlines and control characters
-    filename = "".join(char for char in filename if char.isprintable())
-    # Replace spaces with underscores
-    filename = filename.strip().replace(' ', '_')
-    # Remove any non-alphanumeric characters except underscores, hyphens, and dots
-    filename = re.sub(r'[^\w\-\.]', '', filename)
-    # Ensure the filename ends with .mp4
-    if not filename.lower().endswith('.mp4'):
-        filename += '.mp4'
-    return filename
-
 def clean_temp():
     """Clean temporary directory"""
     if os.path.exists(TEMP_DIR):
@@ -151,11 +136,6 @@ def generate_video():
             logger.error("No video file found after generation")
             return jsonify({"error": "No video file found after generation"}), 500
             
-        # Sanitize the filename
-        original_filename = os.path.basename(video_path)
-        safe_filename = sanitize_filename(original_filename)
-        logger.debug(f"Sanitized filename from '{original_filename}' to '{safe_filename}'")
-        
         if not os.path.exists(video_path):
             logger.error(f"Video file not found at path: {video_path}")
             return jsonify({"error": "Video file not found"}), 500
@@ -165,7 +145,7 @@ def generate_video():
                 video_path,
                 mimetype='video/mp4',
                 as_attachment=True,
-                download_name=safe_filename
+                download_name=os.path.basename(video_path)
             )
             
             # Clean up after successful send

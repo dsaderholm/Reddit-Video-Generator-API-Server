@@ -67,20 +67,30 @@ class ProgressFfmpeg(threading.Thread):
 
 
 def name_normalize(name: str) -> str:
-    name = re.sub(r'[?\\"%*:|<>]', "", name)
-    name = re.sub(r"( [w,W]\s?\/\s?[o,O,0])", r" without", name)
-    name = re.sub(r"( [w,W]\s?\/)", r" with", name)
-    name = re.sub(r"(\d+)\s?\/\s?(\d+)", r"\1 of \2", name)
-    name = re.sub(r"(\w+)\s?\/\s?(\w+)", r"\1 or \2", name)
-    name = re.sub(r"\/", r"", name)
-
-    lang = settings.config["reddit"]["thread"]["post_lang"]
-    if lang:
-        print_substep("Translating filename...")
-        translated_name = translators.translate_text(name, translator="google", to_language=lang)
-        return translated_name
-    else:
-        return name
+    # Remove null bytes and control characters
+    name = re.sub(r'[\x00-\x1F\x7F]', '', name)
+    
+    # Remove zero-width and other invisible Unicode chars
+    name = re.sub(r'[\u200B-\u200F\uFEFF]', '', name)
+    
+    # Normalize all types of spaces (including ideographic) to single space
+    name = re.sub(r'\s+', ' ', name)
+    name = name.strip()
+    
+    # Remove forward slashes (and backslashes for good measure)
+    name = re.sub(r'[/\\\\]', '', name)
+    
+    # Handle common shorthand replacements
+    name = re.sub(r'( [w,W]\s?\/\s?[o,O,0])', r' without', name)
+    name = re.sub(r'( [w,W]\/)', r' with', name)
+    name = re.sub(r'(\d+)\s?\/\s?(\d+)', r'\1 of \2', name)
+    name = re.sub(r'(\w+)\s?\/\s?(\w+)', r'\1 or \2', name)
+    
+    # Ensure the filename doesn't exceed the maximum byte length for Linux
+    while len(name.encode('utf-8')) > 255:
+        name = name[:-1]
+    
+    return name
 
 
 def prepare_background(reddit_id: str, W: int, H: int) -> str:
