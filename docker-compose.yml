@@ -33,6 +33,7 @@ services:
     restart: unless-stopped
     volumes:
     - reddit-video-generator_reddit-video-api_assets:/app/assets
+    - ./config.toml:/app/config.toml
 volumes:
   reddit-video-generator_reddit-video-api_assets:
     name: reddit-video-generator_reddit-video-api_assets
