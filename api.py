@@ -20,6 +20,7 @@ app = Flask(__name__)
 TEMP_DIR = "/app/assets/temp"
 RESULTS_DIR = "/app/results"
 CONFIG_PATH = "/app/config.toml"
+VIDEO_TIMEOUT = 1200  # 20 minute timeout
 
 def clean_temp():
     """Clean temporary directory"""
