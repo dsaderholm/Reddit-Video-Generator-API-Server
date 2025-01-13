@@ -20,7 +20,6 @@ app = Flask(__name__)
 TEMP_DIR = "/app/assets/temp"
 RESULTS_DIR = "/app/results"
 CONFIG_PATH = "/app/config.toml"
-VIDEO_TIMEOUT = 1200  # 20 minute timeout
 
 def clean_temp():
     """Clean temporary directory"""
@@ -55,36 +54,25 @@ def get_subreddit_path():
         raise
 
 def run_video_generator():
-    """Run the main.py script"""
+    """Run the main.py script with a 20-minute timeout"""
     logger.debug("Starting video generator")
     try:
-        process = subprocess.Popen(
+        process = subprocess.run(
             ["python3", "main.py"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
+            capture_output=True, 
+            text=True,
+            timeout=VIDEO_TIMEOUT
         )
         
-        # Log periodic updates about the process status
-        start_time = time.time()
-        while process.poll() is None:
-            elapsed_time = time.time() - start_time
-            if elapsed_time >= VIDEO_TIMEOUT:
-                process.kill()
-                raise Exception(f"Video generation timed out after {VIDEO_TIMEOUT//60} minutes")
-            time.sleep(5)  # Check every 5 seconds
-            logger.debug(f"Video generation in progress... ({int(elapsed_time)}s elapsed)")
-
-        stdout, stderr = process.communicate()
+        logger.debug(f"Video generator output:\n{process.stdout}")
+        if process.stderr:
+            logger.error(f"Video generator errors:\n{process.stderr}")
         
-        logger.debug(f"Video generator output:\n{stdout}")
-        if stderr:
-            logger.error(f"Video generator errors:\n{stderr}")
         if process.returncode != 0:
-            raise subprocess.CalledProcessError(process.returncode, ["python3", "main.py"])
+            raise subprocess.CalledProcessError(process.returncode, ["python3", "main.py"], process.stdout, process.stderr)
             
     except subprocess.TimeoutExpired:
-        process.kill()
+        logger.error(f"Video generation timed out after {VIDEO_TIMEOUT//60} minutes")
         raise Exception(f"Video generation timed out after {VIDEO_TIMEOUT//60} minutes")
 
 def find_latest_video():
