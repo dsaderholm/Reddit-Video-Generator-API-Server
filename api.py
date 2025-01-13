@@ -55,26 +55,62 @@ def get_subreddit_path():
         raise
 
 def run_video_generator():
-    """Run the main.py script with a 20-minute timeout"""
+    """Run the main.py script with real-time logging and a 20-minute timeout"""
     logger.debug("Starting video generator")
     try:
-        process = subprocess.run(
+        # Use Popen to enable real-time logging
+        process = subprocess.Popen(
             ["python3", "main.py"],
-            capture_output=True, 
-            text=True,
-            timeout=VIDEO_TIMEOUT
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1  # Line buffered
         )
         
-        logger.debug(f"Video generator output:\n{process.stdout}")
-        if process.stderr:
-            logger.error(f"Video generator errors:\n{process.stderr}")
+        # Function to log output in real-time
+        def log_output(pipe, log_func):
+            for line in iter(pipe.readline, ''):
+                log_func(line.rstrip())
+            pipe.close()
         
+        # Create threads to read stdout and stderr
+        stdout_thread = threading.Thread(
+            target=log_output, 
+            args=(process.stdout, logger.info)
+        )
+        stderr_thread = threading.Thread(
+            target=log_output, 
+            args=(process.stderr, logger.error)
+        )
+        
+        # Start logging threads
+        stdout_thread.start()
+        stderr_thread.start()
+        
+        # Wait for the process with timeout
+        start_time = time.time()
+        while process.poll() is None:
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= VIDEO_TIMEOUT:
+                process.kill()
+                raise subprocess.TimeoutExpired(["python3", "main.py"], VIDEO_TIMEOUT)
+            time.sleep(1)  # Check process status every second
+        
+        # Wait for logging threads to complete
+        stdout_thread.join()
+        stderr_thread.join()
+        
+        # Check return code
         if process.returncode != 0:
-            raise subprocess.CalledProcessError(process.returncode, ["python3", "main.py"], process.stdout, process.stderr)
+            raise subprocess.CalledProcessError(process.returncode, ["python3", "main.py"])
             
     except subprocess.TimeoutExpired:
         logger.error(f"Video generation timed out after {VIDEO_TIMEOUT//60} minutes")
+        process.kill()
         raise Exception(f"Video generation timed out after {VIDEO_TIMEOUT//60} minutes")
+    except Exception as e:
+        logger.error(f"Error in video generation: {str(e)}")
+        raise
 
 def find_latest_video():
     """Find the most recently created video file in the results folder"""
