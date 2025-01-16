@@ -56,11 +56,11 @@ class pyttsx:
         return re.sub(r'(\d+)([MF])\b', replace_match, text, flags=re.IGNORECASE)
 
     def _convert_time_format(self, text):
-        """Convert time formats (e.g., 5pm, 10AM) to phonetic form"""
+        """Convert time formats (e.g., 5pm, 10AM) to simple spoken form"""
         def replace_time(match):
             hour = match.group(1)
             meridiem = match.group(2).lower()
-            return f"{hour} {' '.join(self.phonetic_letters[letter.upper()] for letter in meridiem)}"
+            return f"{hour} {meridiem}"
         
         return re.sub(r'(\d+)\s*(am|pm|AM|PM)', replace_time, text)
 
