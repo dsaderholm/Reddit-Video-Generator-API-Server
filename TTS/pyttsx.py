@@ -9,7 +9,7 @@ class pyttsx:
     def __init__(self, base_url="http://192.168.1.8:8888"):
         self.base_url = base_url
         self.max_chars = 5000
-        self.pitch_factor = 0.9  # Fixed 10% pitch reduction
+        self.pitch_factor = 0.8  # Fixed 10% pitch reduction
         
         # Default voice settings
         self.default_voice = {
