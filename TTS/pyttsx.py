@@ -9,7 +9,7 @@ class pyttsx:
     def __init__(self, base_url="http://10.20.0.2:8080"):
         self.base_url = base_url
         self.max_chars = 5000
-        self.pitch_factor = 0.8  # Fixed 10% pitch reduction
+        self.pitch_factor = 0.85  # Fixed 10% pitch reduction
         
         # Default voice settings
         self.default_voice = {
@@ -44,6 +44,8 @@ class pyttsx:
             'FIL': 'father in law',
             'SIL': 'sister in law',
             'BIL': 'brother in law',
+            'WIBTAH': 'would I be the ay hole',
+            'WIBTA': 'would I be the ay hole',
         }
 
     def _convert_age_gender(self, text):
