@@ -54,7 +54,6 @@ class pyttsx:
             r'\b(f\*ck|f\*\*k|fuck|effing)\b': 'mess up',
             r'\b(sh\*t|sh\*t|shit|crap)\b': 'stuff',
             r'\b(b\*tch|b\*\*ch|bitch)\b': 'woman',
-            r'\b(damn|darn|heck)\b': 'goodness',
             
             # Sexual content
             r'\b(sex|sexual)\b': 'intimate',
@@ -95,6 +94,24 @@ class pyttsx:
             # Hate speech and discriminatory language
             r'\b(gay|queer)\b': 'fruity',
             r'\b(transgender)\b': 'fruity with extra steps',
+            
+            # More Profanity & Variants  
+            r'\b(ass|arse)\b': 'butt',  
+            r'\b(motherf\*?ucker|mf|mofo)\b': 'bad person',  
+            r'\b(wtf)\b': 'what in the world',  
+
+            # More Sexual References  
+            r'\b(bang|screw|nail)\b': 'hook up',  
+            r'\b(cumming|cum)\b': 'finish',  
+            r'\b(boner|erection)\b': 'arousal',  
+
+            # More Violence & Crime  
+            r'\b(assault|murder|stab|shoot|bomb)\b': 'attack',  
+            r'\b(terrorist|terrorism)\b': 'criminal',  
+
+            # More Drug References  
+            r'\b(xanax|adderall|oxy|fentanyl)\b': 'prescription drug',  
+            r'\b(lean|sizzurp|codeine)\b': 'drink',   
         }
 
     def _filter_youtube_unfriendly_content(self, text):
