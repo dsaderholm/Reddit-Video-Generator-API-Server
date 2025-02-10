@@ -94,7 +94,7 @@ class pyttsx:
             
             # Hate speech and discriminatory language
             r'\b(gay|queer)\b': 'fruity',
-            r'\b(transgender)\b': 'gay with extra steps',
+            r'\b(transgender)\b': 'fruity with extra steps',
         }
 
     def _filter_youtube_unfriendly_content(self, text):
