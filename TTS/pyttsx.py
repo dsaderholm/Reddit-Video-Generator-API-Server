@@ -48,11 +48,79 @@ class pyttsx:
             'WIBTA': 'would I be the ay hole',
         }
 
+        # YouTube-unfriendly words with their substitutions
+        self.youtube_unfriendly_words = {
+            # Profanity
+            r'\b(f\*ck|f\*\*k|fuck|effing)\b': 'mess up',
+            r'\b(sh\*t|sh\*t|shit|crap)\b': 'stuff',
+            r'\b(b\*tch|b\*\*ch|bitch)\b': 'woman',
+            r'\b(damn|darn|heck)\b': 'goodness',
+            
+            # Sexual content
+            r'\b(sex|sexual)\b': 'intimate',
+            r'\b(porn|pornograph)\b': 'inappropriate content',
+            r'\b(masturbat|jerk off)\b': 'personal time',
+            r'\b(erotic|horny)\b': 'romantic',
+            r'\b(tits|boobs)\b': 'chest',
+            
+            # Extreme violence
+            r'\b(mutilat|dismember|decapitat|massacre)\b': 'harmed',
+            r'\b(kill|killed|killing)\b': 'unalive',
+            
+            # Drug references
+            r'\b(cocaine|heroin|meth|crack|weed)\b': 'harmful substance',
+            r'\b(overdose|drugged)\b': 'medical emergency',
+            r'\b(stoned|high)\b': 'impaired',
+            
+            # Offensive slurs (replaced with neutral terms)
+            r'\b(retard|tard)\b': 'person with challenges',
+            r'\b(faggot|dyke|tranny|homo)\b': 'person',
+            r'\b(midget)\b': 'short person',
+            r'\b(nigger)\b': 'black person',
+            r'\b(nigga)\b': 'black fellow',
+            
+            # Crude body part references
+            r'\b(dick|pussy|cock|balls)\b': 'genatailia',
+            
+            # Extremely offensive terms
+            r'\b(cunt|asshole|bastard)\b': 'person',
+            
+            # Religious/Offensive exclamations
+            r'\b(hell|damn)\b': 'goodness',
+            
+            # Derogatory terms
+            r'\b(whore|slut)\b': 'person',
+            r'\b(loser|idiot|moron)\b': 'individual',
+            
+            # Hate speech and discriminatory language
+            r'\b(gay|queer)\b': 'fruity',
+            r'\b(transgender)\b': 'gay with extra steps',
+        }
+
+    def _filter_youtube_unfriendly_content(self, text):
+        """
+        Filter out YouTube-unfriendly content by substituting problematic words.
+        
+        Args:
+            text (str): Input text to be filtered.
+        
+        Returns:
+            str: Filtered text with problematic words replaced.
+        """
+        for pattern, replacement in self.youtube_unfriendly_words.items():
+            # Use re.IGNORECASE for case-insensitive matching
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        
+        return text
+
     def _convert_age_gender(self, text):
-        """Convert age/gender format (e.g., 24F, 25M) to written form"""
+        """Convert age/gender format (e.g., 24F, 25M) to written form with appropriate age-based terms"""
         def replace_match(match):
-            age = match.group(1)
-            gender = 'woman' if match.group(2).upper() == 'F' else 'man'
+            age = int(match.group(1))
+            if age < 18:
+                gender = 'girl' if match.group(2).upper() == 'F' else 'boy'
+            else:
+                gender = 'woman' if match.group(2).upper() == 'F' else 'man'
             return f"a {age}-year-old {gender}"
         
         return re.sub(r'(\d+)([MF])\b', replace_match, text, flags=re.IGNORECASE)
@@ -68,7 +136,10 @@ class pyttsx:
 
     def _preprocess_text(self, text):
         """Process Reddit shorthand and formatting"""
-        # Handle age/gender formats first
+        # Filter YouTube-unfriendly content first
+        text = self._filter_youtube_unfriendly_content(text)
+        
+        # Handle age/gender formats
         text = self._convert_age_gender(text)
         
         # Convert time formats
@@ -189,5 +260,5 @@ class pyttsx:
 if __name__ == "__main__":
     # Example usage
     tts = pyttsx()
-    text = "AITA (24F) for telling my BF (26M) that he needs to stop playing video games? Meeting at 5pm in Room A."
+    text = "AITA (24F) for telling my BF (26M) that he needs to stop playing video games? Fuck that noise! This shit is getting out of hand."
     tts.generate(text, "output.wav")
