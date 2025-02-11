@@ -131,16 +131,19 @@ class pyttsx:
         return text
 
     def _convert_age_gender(self, text):
-        """Convert age/gender format (e.g., 24F, 25M) to written form with appropriate age-based terms"""
+        """Convert age/gender format (e.g., 24F, 25M, M17, F42) to written form with appropriate age-based terms"""
         def replace_match(match):
-            age = int(match.group(1))
+            age = int(match.group(1) or match.group(3))  # Capture age from either position
+            gender_char = match.group(2) or match.group(4)  # Capture gender character
+
             if age < 18:
-                gender = 'girl' if match.group(2).upper() == 'F' else 'boy'
+                gender = 'girl' if gender_char.upper() == 'F' else 'boy'
             else:
-                gender = 'woman' if match.group(2).upper() == 'F' else 'man'
+                gender = 'woman' if gender_char.upper() == 'F' else 'man'
+
             return f"a {age}-year-old {gender}"
-        
-        return re.sub(r'(\d+)([MF])\b', replace_match, text, flags=re.IGNORECASE)
+
+        return re.sub(r'(\d+)([MF])\b|([MF])(\d+)\b', replace_match, text, flags=re.IGNORECASE)
 
     def _convert_time_format(self, text):
         """Convert time formats (e.g., 5pm, 10AM) to simple spoken form"""
