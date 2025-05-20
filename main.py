@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 import math
 import sys
+import os
 from os import name
 from pathlib import Path
 from subprocess import Popen
 from typing import NoReturn
+
+# Import Intel GPU initialization script
+from utils.intel_gpu_init import initialize_intel_gpu
 
 from prawcore import ResponseException
 
@@ -45,6 +49,15 @@ checkversion(__VERSION__)
 
 def main(POST_ID=None) -> None:
     global redditid, reddit_object
+    
+    # Initialize Intel GPU if available
+    print_step("Initializing GPU settings...")
+    gpu_available = initialize_intel_gpu()
+    if gpu_available:
+        print_substep("Intel Arc A380 GPU initialized successfully", "bold green")
+    else:
+        print_substep("Using CPU for processing", "bold yellow")
+    
     reddit_object = get_subreddit_threads(POST_ID)
     redditid = id(reddit_object)
     length, number_of_comments = save_text_to_mp3(reddit_object)
