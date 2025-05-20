@@ -19,6 +19,11 @@ services:
     environment:
     - PYTHONUNBUFFERED=1
     - PYTHONIOENCODING=utf8
+    - PYTHONUNBUFFERED=1
+    - PYTHONIOENCODING=utf8
+    - INTEL_DEVICE_TYPE=gpu
+    - ONEAPI_DEVICE_SELECTOR=level_zero:gpu
+    - USE_IPEX=1
     extra_hosts:
     - geolocation.onetrust.com:104.18.122.209
     - ip.taobao.com:140.205.94.189
@@ -35,12 +40,6 @@ services:
     - reddit-video-generator_reddit-video-api_assets:/app/assets
     - ./config.toml:/app/config.toml
     - /dev/dri:/dev/dri
-    environment:
-    - PYTHONUNBUFFERED=1
-    - PYTHONIOENCODING=utf8
-    - INTEL_DEVICE_TYPE=gpu
-    - ONEAPI_DEVICE_SELECTOR=level_zero:gpu
-    - USE_IPEX=1
     devices:
     - /dev/dri
 volumes:
