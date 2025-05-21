@@ -19,6 +19,8 @@ services:
     environment:
     - PYTHONUNBUFFERED=1
     - PYTHONIOENCODING=utf8
+    - LIBVA_DRIVER_NAME=iHD
+    - LIBVA_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri
     extra_hosts:
     - geolocation.onetrust.com:104.18.122.209
     - ip.taobao.com:140.205.94.189
