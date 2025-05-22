@@ -11,6 +11,9 @@ import glob
 import logging
 import re
 
+# Import Intel GPU initialization
+from utils.intel_gpu_init import initialize_intel_arc_gpu, check_ffmpeg_hardware_support
+
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -200,7 +203,20 @@ def health_check():
     }), 200
 
 if __name__ == '__main__':
+    # Initialize Intel Arc GPU on startup
+    logger.info("🚀 Starting Reddit Video Generator API with Intel Arc GPU support")
+    
+    # Initialize Intel Arc GPU
+    gpu_initialized = initialize_intel_arc_gpu()
+    if gpu_initialized:
+        logger.info("✅ Intel Arc GPU initialized successfully")
+    else:
+        logger.warning("⚠️ Intel Arc GPU not available, using CPU fallback")
+    
+    # Check FFmpeg hardware acceleration support
+    check_ffmpeg_hardware_support()
+    
     # Ensure temp directory exists
     os.makedirs(TEMP_DIR, exist_ok=True)
-    logger.debug("Starting Flask application")
+    logger.info("🌐 Starting Flask application on 0.0.0.0:5000")
     app.run(host='0.0.0.0', port=5000)

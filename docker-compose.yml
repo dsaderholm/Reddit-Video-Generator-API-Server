@@ -17,10 +17,27 @@ services:
     - 8.8.4.4
     dns_search: ''
     environment:
+    # Basic Python settings
     - PYTHONUNBUFFERED=1
     - PYTHONIOENCODING=utf8
+    # Intel Arc GPU optimization environment variables
     - LIBVA_DRIVER_NAME=iHD
     - LIBVA_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri
+    - INTEL_MEDIA_RUNTIME=/usr/lib/x86_64-linux-gnu/dri
+    # OneAPI/Level Zero for PyTorch XPU
+    - ONEAPI_DEVICE_SELECTOR=level_zero:gpu
+    - INTEL_DEVICE_TYPE=gpu
+    - USE_IPEX=1
+    - ZE_AFFINITY_MASK=0
+    # Intel GPU frequency and performance optimization
+    - INTEL_GPU_MIN_FREQ=0
+    - INTEL_GPU_MAX_FREQ=2100
+    # Intel Media SDK / OneVPL settings
+    - MFX_IMPL_BASEDIR=/usr/lib/x86_64-linux-gnu
+    - VPL_IMPLEMENTATION_SEARCH_PATH=/usr/lib/x86_64-linux-gnu
+    # FFmpeg Intel Arc optimizations
+    - FFMPEG_QSV_RUNTIME=1
+    - INTEL_MEDIA_DRIVER_IOCTLS=1
     extra_hosts:
     - geolocation.onetrust.com:104.18.122.209
     - ip.taobao.com:140.205.94.189
@@ -36,9 +53,32 @@ services:
     volumes:
     - reddit-video-generator_reddit-video-api_assets:/app/assets
     - ./config.toml:/app/config.toml
-    - /dev/dri:/dev/dri
+    # Intel Arc GPU device passthrough
     devices:
-    - /dev/dri
+    - /dev/dri:/dev/dri
+    # Required groups for Intel Arc GPU access
+    group_add:
+    - video
+    - render
+    # Enhanced capabilities for optimal Intel Arc performance
+    cap_add:
+    - SYS_ADMIN
+    - CAP_PERFMON
+    # Intel Arc specific device configuration
+    device_cgroup_rules:
+    - 'c 226:* rmw'  # DRI devices
+    # Security context optimizations for Intel Arc
+    security_opt:
+    - seccomp:unconfined
+    # Memory optimizations for Intel Arc workloads
+    shm_size: 1gb
+    # Intel Arc GPU health monitoring
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import torch; import intel_extension_for_pytorch as ipex; exit(0 if torch.xpu.is_available() else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 volumes:
   reddit-video-generator_reddit-video-api_assets:
     name: reddit-video-generator_reddit-video-api_assets
