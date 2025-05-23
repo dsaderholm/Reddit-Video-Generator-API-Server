@@ -1,14 +1,20 @@
 FROM python:3.10.14-slim
 
+# First, fix the Debian sources to include non-free repository
+RUN sed -i "s/Components: main/Components: main non-free non-free-firmware/" /etc/apt/sources.list.d/debian.sources
+
+# Update package lists after fixing sources
+RUN apt-get update
+
 # Install Intel Arc-optimized packages and system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get install -y \
     # Essential tools
     wget \
     curl \
     gnupg \
     software-properties-common \
     ca-certificates \
-    # Intel GPU and media packages
+    # Intel GPU and media packages (now available from non-free)
     intel-media-va-driver-non-free \
     intel-gpu-tools \
     libva-utils \
