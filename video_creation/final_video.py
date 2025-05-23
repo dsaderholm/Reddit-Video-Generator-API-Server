@@ -117,57 +117,102 @@ class ProgressFfmpeg(threading.Thread):
         self.stop()
 
 def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: str, max_retries: int = 3) -> bool:
-    """Enhanced Intel Arc hardware acceleration for FFmpeg with QSV + VA-API hybrid approach."""
+    """Enhanced Intel Arc QuickSync (QSV) hardware acceleration for FFmpeg."""
     for attempt in range(max_retries):
         try:
             threads = max(1, multiprocessing.cpu_count() - 1)
             
-            print(f"🚀 Attempting Intel Arc QSV optimization (attempt {attempt + 1})...")
+            print(f"🚀 Attempting Intel Arc QuickSync (QSV) encoding (attempt {attempt + 1})...")
             
-            # Primary: Intel Arc QSV encoding (best performance for Arc GPUs)
+            # Method 1: Modern QSV approach (FFmpeg 6.0+)
             try:
-                ffmpeg.output(
+                output = ffmpeg.output(
                     background_clip,
                     final_audio,
                     path,
                     f="mp4",
                     **{
-                        # Use QSV for encoding (superior to VA-API for Arc)
+                        # Intel QuickSync Video encoding
                         "c:v": "h264_qsv",
                         "preset": "medium",
+                        "profile:v": "high",
+                        "level": "4.1",
+                        # QSV rate control (ICQ mode for quality)
+                        "global_quality": "23",
                         "look_ahead": "1",
                         "look_ahead_depth": "40",
-                        # Hardware device initialization
-                        "init_hw_device": "vaapi=va:/dev/dri/renderD128",
-                        "init_hw_device": "qsv=qs@va",
-                        # Video filters optimized for Intel Arc
-                        "vf": "format=nv12,hwupload=extra_hw_frames=8",
-                        # Bitrate and quality optimizations
-                        "b:v": "20M",
+                        # Quality and performance settings
                         "maxrate": "25M",
-                        "bufsize": "40M",
+                        "bufsize": "50M",
                         # Audio settings
                         "c:a": "aac",
                         "b:a": "192k",
                         "threads": threads,
-                        # Intel Arc specific optimizations
-                        "low_power": "0",  # Use high-quality encoding
+                        # Intel Arc optimizations
+                        "low_power": "0",
                         "async_depth": "4",
-                        "gpu": "0",  # Specify GPU if multiple present
-                    },
-                ).overwrite_output().global_args("-progress", progress_file).run(
+                    }
+                ).overwrite_output().global_args("-progress", progress_file)
+                
+                output.run(
                     quiet=True,
                     overwrite_output=True,
                     capture_stdout=True,
                     capture_stderr=True,
                 )
-                print("✅ Intel Arc QSV acceleration successful!")
+                print("✅ Intel Arc QuickSync (QSV) encoding successful!")
                 return True
                 
             except ffmpeg.Error as qsv_error:
-                print(f"⚠️ QSV failed, trying enhanced VA-API...")
+                print(f"⚠️ QSV method 1 failed, trying hardware device initialization...")
                 
-                # Enhanced VA-API fallback with Arc optimizations
+                # Method 2: With explicit hardware device initialization
+                output = ffmpeg.output(
+                    background_clip,
+                    final_audio,
+                    path,
+                    f="mp4",
+                    **{
+                        "c:v": "h264_qsv",
+                        "preset": "medium",
+                        "global_quality": "23",
+                        "look_ahead": "1",
+                        "maxrate": "25M",
+                        "c:a": "aac",
+                        "b:a": "192k",
+                        "threads": threads,
+                        "low_power": "0",
+                    }
+                ).overwrite_output().global_args(
+                    "-progress", progress_file,
+                    "-hwaccel", "qsv",
+                    "-hwaccel_output_format", "qsv"
+                )
+                
+                output.run(
+                    quiet=True,
+                    overwrite_output=True,
+                    capture_stdout=True,
+                    capture_stderr=True,
+                )
+                print("✅ Intel Arc QuickSync (method 2) successful!")
+                return True
+            
+        except ffmpeg.Error as e:
+            print(f"❌ Intel Arc QuickSync attempt {attempt + 1} failed:")
+            if e.stderr:
+                error_msg = e.stderr.decode("utf8")
+                print("Error:", error_msg)
+                
+                # Check for specific Intel Arc/QSV issues
+                if "qsv" in error_msg.lower():
+                    print("💡 Tip: Check Intel GPU drivers and /dev/dri permissions")
+                elif "mfx" in error_msg.lower():
+                    print("💡 Tip: Intel Media SDK/OneVPL may need to be installed")
+            
+            # Fallback to VA-API if QSV fails
+            try:
+                print("🔄 Falling back to VA-API encoding...")
                 ffmpeg.output(
                     background_clip,
                     final_audio,
@@ -184,9 +229,8 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                         "c:a": "aac",
                         "b:a": "192k",
                         "threads": threads,
-                        "rc_mode": "CQP",  # Constant Quality for Arc
+                        "rc_mode": "CQP",
                         "qp": "23",
-                        "bf": "3",  # B-frames for better compression
                     },
                 ).overwrite_output().global_args("-progress", progress_file).run(
                     quiet=True,
@@ -194,58 +238,47 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                     capture_stdout=True,
                     capture_stderr=True,
                 )
-                print("✅ Intel Arc VA-API fallback successful!")
-                return True
-            
-        except ffmpeg.Error as e:
-            print(f"❌ Intel Arc hardware acceleration attempt {attempt + 1} failed:")
-            if e.stderr:
-                error_msg = e.stderr.decode("utf8")
-                print("Error:", error_msg)
-                
-                # Check for specific Intel Arc issues
-                if "vaapi" in error_msg.lower():
-                    print("💡 Tip: Check VA-API driver installation and /dev/dri permissions")
-                elif "qsv" in error_msg.lower():
-                    print("💡 Tip: Ensure Intel OneVPL/MediaSDK is installed")
-            
-            # Final software fallback with optimized x264 settings
-            try:
-                print("🔄 Trying optimized software fallback...")
-                ffmpeg.output(
-                    background_clip,
-                    final_audio,
-                    path,
-                    f="mp4",
-                    **{
-                        "c:v": "libx264",
-                        "preset": "medium",
-                        "crf": "23",
-                        "b:v": "20M",
-                        "c:a": "aac",
-                        "b:a": "192k",
-                        "threads": threads,
-                        # x264 optimizations
-                        "movflags": "+faststart",
-                        "pix_fmt": "yuv420p",
-                    },
-                ).overwrite_output().global_args("-progress", progress_file).run(
-                    quiet=True,
-                    overwrite_output=True,
-                    capture_stdout=True,
-                    capture_stderr=True,
-                )
-                print("✅ Software encoding successful")
+                print("✅ VA-API fallback successful!")
                 return True
                 
-            except ffmpeg.Error as sw_error:
+            except ffmpeg.Error as va_error:
                 if attempt == max_retries - 1:
-                    print(f"❌ All encoding methods failed")
-                    if sw_error.stderr:
-                        print("Final error:", sw_error.stderr.decode("utf8"))
-                    raise sw_error
+                    print(f"❌ All hardware encoding failed, trying software fallback...")
+                    # Final software fallback
+                    try:
+                        ffmpeg.output(
+                            background_clip,
+                            final_audio,
+                            path,
+                            f="mp4",
+                            **{
+                                "c:v": "libx264",
+                                "preset": "medium",
+                                "crf": "23",
+                                "b:v": "20M",
+                                "c:a": "aac",
+                                "b:a": "192k",
+                                "threads": threads,
+                                "movflags": "+faststart",
+                                "pix_fmt": "yuv420p",
+                            },
+                        ).overwrite_output().global_args("-progress", progress_file).run(
+                            quiet=True,
+                            overwrite_output=True,
+                            capture_stdout=True,
+                            capture_stderr=True,
+                        )
+                        print("✅ Software encoding successful")
+                        return True
+                    except ffmpeg.Error as final_error:
+                        print(f"❌ All encoding methods failed")
+                        if final_error.stderr:
+                            print("Final error:", final_error.stderr.decode("utf8"))
+                        raise final_error
+                
                 print(f"🔄 Retrying... ({attempt + 1}/{max_retries})")
                 time.sleep(2)
+    
     return False
 
 def name_normalize(name: str) -> str:
