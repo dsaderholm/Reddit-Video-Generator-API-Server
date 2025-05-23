@@ -59,7 +59,6 @@ services:
     # Required groups for Intel Arc GPU access
     group_add:
     - video
-    - render
     # Enhanced capabilities for optimal Intel Arc performance
     cap_add:
     - SYS_ADMIN
