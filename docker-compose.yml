@@ -16,7 +16,6 @@ services:
     # Add video group access
     group_add:
       - video
-      - render
     # Environment variables for Intel Arc
     environment:
       - LIBVA_DRIVER_NAME=iHD
