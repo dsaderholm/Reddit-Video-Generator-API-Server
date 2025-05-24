@@ -5,7 +5,7 @@ services:
     build: .
     container_name: reddit-video-generator
     ports:
-      - "5000:5000"
+      - "5442:5000"
     volumes:
       - ./results:/app/results
       - ./assets:/app/assets
