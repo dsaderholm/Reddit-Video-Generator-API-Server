@@ -118,121 +118,94 @@ class ProgressFfmpeg(threading.Thread):
         self.stop()
 
 def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: str, reddit_id: str, max_retries: int = 3) -> bool:
-    """Intel Arc hardware acceleration using raw FFmpeg commands instead of python-ffmpeg complex filters."""
+    """Ultra-simplified Intel Arc hardware acceleration - just background video + title overlay + TTS audio."""
     for attempt in range(max_retries):
         try:
             threads = max(1, multiprocessing.cpu_count() - 1)
             
             print(f"🚀 Attempting Intel Arc hardware encoding (attempt {attempt + 1})...")
             
-            # BYPASS python-ffmpeg's complex filter generation - use subprocess instead
-            # This avoids the format conversion issues between complex filters and hardware encoding
-            
-            # Method 1: Use raw ffmpeg command with proper hardware acceleration
+            # Method 1: Try Intel Arc QSV hardware encoding
             try:
-                print("🎯 Using raw FFmpeg command with Intel Arc QSV...")
+                print("🎯 Using Intel Arc QSV hardware acceleration...")
                 
-                # Build FFmpeg command manually to avoid python-ffmpeg filter conflicts
+                # Ultra-simple: background video + title overlay (first 8 seconds) + TTS audio only
                 cmd = [
                     "ffmpeg", "-y",  # Overwrite output
                     "-progress", progress_file,
                     "-threads", str(threads),
-                ]
-                
-                # Add all input files
-                cmd.extend(["-i", f"assets/temp/{reddit_id}/background_noaudio.mp4"])  # Background video
-                cmd.extend(["-i", f"assets/temp/{reddit_id}/png/title.png"])           # Title image
-                
-                # Add all overlay images - count how many exist first
-                overlay_count = 0
-                for i in range(20):  # Check up to 20 overlays
-                    overlay_path = f"assets/temp/{reddit_id}/png/trs{i}.png"
-                    if os.path.exists(overlay_path):
-                        cmd.extend(["-i", overlay_path])
-                        overlay_count += 1
-                    else:
-                        break
-                
-                # Add audio files
-                audio_input_index = 2 + overlay_count  # Background=0, title=1, overlays=2 to N, then audio
-                cmd.extend(["-i", f"assets/temp/{reddit_id}/audio.mp3"])      # TTS audio
-                cmd.extend(["-i", f"assets/temp/{reddit_id}/background.mp3"])  # Background audio
-                
-                # Hardware-friendly filter_complex that works with QSV
-                # Simplified approach: just combine background with title (skip complex overlays for hardware)
-                audio_idx = audio_input_index
-                bg_audio_idx = audio_input_index + 1
-                
-                filter_complex = (
-                    "[0:v]scale=1080:1920[bg];"
-                    "[1:v]scale=486:486[title];"
-                    "[bg][title]overlay=(W-w)/2:(H-h)/2[v1];"
-                    f"[{audio_idx}:a][{bg_audio_idx}:a]amix=inputs=2:duration=longest[audio]"
-                )
-                
-                cmd.extend([
-                    "-filter_complex", filter_complex,
-                    "-map", "[v1]", "-map", "[audio]",
+                    "-i", f"assets/temp/{reddit_id}/background_noaudio.mp4",  # Background video
+                    "-i", f"assets/temp/{reddit_id}/png/title.png",           # Title image
+                    "-i", f"assets/temp/{reddit_id}/audio.mp3",               # TTS audio only
+                    "-filter_complex", 
+                    "[0:v]scale=1080:1920[bg];[1:v]scale=486:486[title];[bg][title]overlay=(W-w)/2:(H-h)/2:enable='between(t,0,8)'[v]",
+                    "-map", "[v]", "-map", "2:a",  # Video from filter, audio from input 2 (TTS)
                     "-c:v", "h264_qsv",
                     "-preset", "medium",
                     "-global_quality", "23",
                     "-c:a", "aac", "-b:a", "192k",
                     "-movflags", "+faststart",
                     path
-                ])
+                ]
                 
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=600  # 10 minute timeout
+                    timeout=600
                 )
                 
                 if result.returncode == 0:
-                    print("✅ Intel Arc QSV raw command successful!")
+                    print("✅ Intel Arc QSV encoding successful!")
                     return True
                 else:
-                    print(f"⚠️ QSV raw command failed: {result.stderr}")
+                    print(f"⚠️ QSV failed: {result.stderr}")
                     raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
                     
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-                print(f"⚠️ Raw QSV command failed, trying software fallback...")
+                print(f"⚠️ QSV failed, trying VA-API...")
                 
-                # Method 2: Software encoding with Intel optimizations (GUARANTEED TO WORK)
+                # Method 2: Try VA-API hardware encoding
                 try:
-                    print("🔄 Using optimized software encoding...")
+                    print("🔄 Trying Intel Arc VA-API...")
                     
-                    # Use the original python-ffmpeg approach but with software encoding
-                    ffmpeg.output(
-                        background_clip,
-                        final_audio,
-                        path,
-                        f="mp4",
-                        **{
-                            "c:v": "libx264",
-                            "preset": "medium",
-                            "crf": "23",
-                            "tune": "fastdecode",  # Intel CPU optimization
-                            "b:v": "20M",
-                            "c:a": "aac",
-                            "b:a": "192k",
-                            "threads": threads,
-                            "thread_type": "frame+slice",
-                            "movflags": "+faststart",
-                            "pix_fmt": "yuv420p",
-                        },
-                    ).overwrite_output().global_args("-progress", progress_file).run(
-                        quiet=True,
-                        overwrite_output=True,
-                        capture_stdout=True,
-                        capture_stderr=True,
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-progress", progress_file,
+                        "-threads", str(threads),
+                        "-hwaccel", "vaapi",
+                        "-hwaccel_device", "/dev/dri/renderD128",
+                        "-i", f"assets/temp/{reddit_id}/background_noaudio.mp4",
+                        "-i", f"assets/temp/{reddit_id}/png/title.png",
+                        "-i", f"assets/temp/{reddit_id}/audio.mp3",
+                        "-filter_complex",
+                        "[0:v]scale=1080:1920,format=nv12,hwupload[bgv];[1:v]scale=486:486[title];[bgv][title]overlay_vaapi=(W-w)/2:(H-h)/2:enable='between(t,0,8)'[v]",
+                        "-map", "[v]", "-map", "2:a",
+                        "-c:v", "h264_vaapi",
+                        "-profile:v", "high",
+                        "-qp", "23",
+                        "-c:a", "aac", "-b:a", "192k",
+                        "-movflags", "+faststart",
+                        path
+                    ]
+                    
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=600
                     )
-                    print("✅ Intel-optimized software encoding successful!")
-                    return True
                     
-                except ffmpeg.Error as sw_error:
-                    print(f"⚠️ Software encoding also failed: {sw_error}")
-                    raise sw_error
+                    if result.returncode == 0:
+                        print("✅ Intel Arc VA-API encoding successful!")
+                        return True
+                    else:
+                        print(f"⚠️ VA-API failed: {result.stderr}")
+                        raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
+                        
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+                    print(f"⚠️ VA-API also failed, falling back to software...")
+                    raise e
             
         except Exception as e:
             print(f"❌ Intel Arc encoding attempt {attempt + 1} failed:")
