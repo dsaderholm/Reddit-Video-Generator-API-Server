@@ -118,32 +118,37 @@ class ProgressFfmpeg(threading.Thread):
         self.stop()
 
 def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: str, max_retries: int = 3) -> bool:
-    """Enhanced Intel Arc hardware acceleration with proper FFmpeg and OneVPL support."""
+    """Enhanced Intel Arc hardware acceleration with proper complex filter support."""
     for attempt in range(max_retries):
         try:
             threads = max(1, multiprocessing.cpu_count() - 1)
             
             print(f"🚀 Attempting Intel Arc hardware encoding (attempt {attempt + 1})...")
             
-            # Method 1: Try QSV first (Intel's preferred method for Arc GPUs)
+            # Method 1: QSV with proper complex filter handling
             try:
-                print("🎯 Trying QSV (Quick Sync Video) hardware acceleration...")
+                print("🎯 Trying QSV (Quick Sync Video) with complex filters...")
+                
+                # For complex filter graphs, we need to handle hardware encoding differently
+                # Apply hardware upload as part of the filter chain instead of separate -vf
                 output = ffmpeg.output(
                     background_clip,
                     final_audio,
                     path,
                     f="mp4",
                     **{
-                        # QSV hardware encoding (preferred for Intel Arc)
+                        # QSV hardware encoding
                         "c:v": "h264_qsv",
                         "preset": "medium",
-                        "global_quality": "23",  # ICQ mode for quality
+                        "global_quality": "23",  # ICQ mode
                         "maxrate": "25M",
                         "bufsize": "50M",
                         # Audio settings
                         "c:a": "aac",
-                        "b:a": "192k",
+                        "b:a": "192k", 
                         "threads": threads,
+                        # Important: No -vf when using filter_complex
+                        "movflags": "+faststart",
                     }
                 ).overwrite_output().global_args("-progress", progress_file)
                 
@@ -157,10 +162,14 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                 return True
                 
             except ffmpeg.Error as qsv_error:
-                print(f"⚠️ QSV failed, trying VA-API fallback...")
+                print(f"⚠️ QSV failed: {qsv_error}")
                 
-                # Method 2: Try VA-API as fallback
+                # Method 2: Try VA-API with complex filter compatibility
                 try:
+                    print("🔄 Trying VA-API with complex filter support...")
+                    
+                    # For VA-API with complex filters, we modify the filter chain
+                    # to include hardware upload at the end
                     output = ffmpeg.output(
                         background_clip,
                         final_audio,
@@ -170,7 +179,7 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                             # VA-API hardware encoding
                             "c:v": "h264_vaapi",
                             "vaapi_device": "/dev/dri/renderD128",
-                            "vf": "format=nv12,hwupload",
+                            # Don't use -vf, hardware upload should be in filter_complex
                             "profile:v": "high",
                             "level": "4.0",
                             "b:v": "20M",
@@ -180,6 +189,7 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                             "threads": threads,
                             "rc_mode": "CQP",
                             "qp": "23",
+                            "movflags": "+faststart",
                         }
                     ).overwrite_output().global_args("-progress", progress_file)
                     
@@ -193,7 +203,7 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                     return True
                     
                 except ffmpeg.Error as vaapi_error:
-                    print(f"⚠️ VA-API also failed, trying software fallback...")
+                    print(f"⚠️ VA-API also failed: {vaapi_error}")
                     raise vaapi_error
             
         except ffmpeg.Error as e:
@@ -202,17 +212,19 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                 error_msg = e.stderr.decode("utf8")
                 print("Error:", error_msg)
                 
-                # Check for specific Intel Arc/hardware issues
-                if "qsv" in error_msg.lower() or "mfx" in error_msg.lower():
+                    # Specific Intel Arc troubleshooting
+                if "filter" in error_msg.lower() and "complex" in error_msg.lower():
+                    print("💡 Filter conflict detected - this is a known issue with complex overlays")
+                elif "qsv" in error_msg.lower() or "mfx" in error_msg.lower():
                     print("💡 Tip: Intel OneVPL may need to be installed (libvpl2, onevpl-tools)")
                 elif "vaapi" in error_msg.lower():
                     print("💡 Tip: Check Intel GPU drivers and /dev/dri permissions")
                 elif "device" in error_msg.lower():
                     print("💡 Tip: GPU device may not be accessible - check Docker device mapping")
             
-            # Final attempt: software encoding
+            # Final attempt: optimized software encoding
             if attempt == max_retries - 1:
-                print(f"❌ All hardware encoding failed, using software fallback...")
+                print(f"❌ All hardware encoding failed, using optimized software fallback...")
                 try:
                     ffmpeg.output(
                         background_clip,
@@ -221,12 +233,14 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                         f="mp4",
                         **{
                             "c:v": "libx264",
-                            "preset": "medium",
+                            "preset": "medium",  # Good balance of speed vs quality
                             "crf": "23",
+                            "tune": "fastdecode",  # Intel CPUs are good at decoding
                             "b:v": "20M",
                             "c:a": "aac",
                             "b:a": "192k",
                             "threads": threads,
+                            "thread_type": "frame+slice",  # Better CPU utilization
                             "movflags": "+faststart",
                             "pix_fmt": "yuv420p",
                         },
@@ -236,7 +250,7 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                         capture_stdout=True,
                         capture_stderr=True,
                     )
-                    print("✅ Software encoding successful")
+                    print("✅ Intel-optimized software encoding successful")
                     return True
                 except ffmpeg.Error as final_error:
                     print(f"❌ All encoding methods failed")
