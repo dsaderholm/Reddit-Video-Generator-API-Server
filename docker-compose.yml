@@ -1,83 +1,27 @@
-networks:
-  reddit-network:
-    driver: bridge
-  video_generation:
-    external: true
-    name: Video Generation
+version: '3.8'
+
 services:
-  reddit-video-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command:
-    - python3
-    - api.py
-    dns:
-    - 8.8.8.8
-    - 8.8.4.4
-    dns_search: ''
-    environment:
-    # Basic Python settings
-    - PYTHONUNBUFFERED=1
-    - PYTHONIOENCODING=utf8
-    # Intel Arc GPU optimization environment variables
-    - LIBVA_DRIVER_NAME=iHD
-    - LIBVA_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri
-    - INTEL_MEDIA_RUNTIME=/usr/lib/x86_64-linux-gnu/dri
-    # OneAPI/Level Zero for PyTorch XPU
-    - ONEAPI_DEVICE_SELECTOR=level_zero:gpu
-    - INTEL_DEVICE_TYPE=gpu
-    - USE_IPEX=1
-    - ZE_AFFINITY_MASK=0
-    # Intel GPU frequency and performance optimization
-    - INTEL_GPU_MIN_FREQ=0
-    - INTEL_GPU_MAX_FREQ=2100
-    # Intel Media SDK / OneVPL settings
-    - MFX_IMPL_BASEDIR=/usr/lib/x86_64-linux-gnu
-    - VPL_IMPLEMENTATION_SEARCH_PATH=/usr/lib/x86_64-linux-gnu
-    # FFmpeg Intel Arc optimizations
-    - FFMPEG_QSV_RUNTIME=1
-    - INTEL_MEDIA_DRIVER_IOCTLS=1
-    extra_hosts:
-    - geolocation.onetrust.com:104.18.122.209
-    - ip.taobao.com:140.205.94.189
-    networks:
-      reddit-network:
-        aliases:
-        - reddit-api
-      video_generation:
-        ipv4_address: 10.20.0.11
+  reddit-video-generator:
+    build: .
+    container_name: reddit-video-generator
     ports:
-    - 8354:5000
-    restart: unless-stopped
+      - "5000:5000"
     volumes:
-    - reddit-video-generator_reddit-video-api_assets:/app/assets
-    - ./config.toml:/app/config.toml
-    # Intel Arc GPU device passthrough
+      - ./results:/app/results
+      - ./assets:/app/assets
+      - ./config.toml:/app/config.toml
+    # Essential for Intel Arc GPU hardware acceleration
     devices:
-    - /dev/dri:/dev/dri
-    # Required groups for Intel Arc GPU access
+      - /dev/dri:/dev/dri
+    # Add video group access
     group_add:
-    - video
-    # Enhanced capabilities for optimal Intel Arc performance
-    cap_add:
-    - SYS_ADMIN
-    - CAP_PERFMON
-    # Intel Arc specific device configuration
-    device_cgroup_rules:
-    - 'c 226:* rmw'  # DRI devices
-    # Security context optimizations for Intel Arc
-    security_opt:
-    - seccomp:unconfined
-    # Memory optimizations for Intel Arc workloads
-    shm_size: 1gb
-    # Intel Arc GPU health monitoring
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import torch; import intel_extension_for_pytorch as ipex; exit(0 if torch.xpu.is_available() else 1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-volumes:
-  reddit-video-generator_reddit-video-api_assets:
-    name: reddit-video-generator_reddit-video-api_assets
+      - video
+      - render
+    # Environment variables for Intel Arc
+    environment:
+      - LIBVA_DRIVER_NAME=iHD
+      - LIBVA_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri
+      - INTEL_MEDIA_RUNTIME=/usr/lib/x86_64-linux-gnu/dri
+    # Optional: privileged mode for full GPU access (use only if needed)
+    # privileged: true
+    restart: unless-stopped
