@@ -1,28 +1,49 @@
-version: '3.8'
+networks:
+  reddit-network:
+    driver: bridge
+  video_generation:
+    external: true
+    name: Video Generation
 
 services:
   reddit-video-generator:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: reddit-video-generator
+    command:
+      - python3
+      - api.py
     ports:
       - "5442:5000"
     volumes:
       - reddit-video-generator_reddit-video-api_assets:/app/assets
       - ./config.toml:/app/config.toml
-    # Essential for Intel Arc GPU hardware acceleration
     devices:
       - /dev/dri:/dev/dri
-    # Add video group access
     group_add:
       - video
-    # Environment variables for Intel Arc
     environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=utf8
       - LIBVA_DRIVER_NAME=iHD
       - LIBVA_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri
       - INTEL_MEDIA_RUNTIME=/usr/lib/x86_64-linux-gnu/dri
-    # Optional: privileged mode for full GPU access (use only if needed)
-    # privileged: true
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    dns_search: ''
+    extra_hosts:
+      - geolocation.onetrust.com:104.18.122.209
+      - ip.taobao.com:140.205.94.189
+    networks:
+      reddit-network:
+        aliases:
+          - reddit-api
+      video_generation:
+        ipv4_address: 10.20.0.11
     restart: unless-stopped
+
 volumes:
   reddit-video-generator_reddit-video-api_assets:
     name: reddit-video-generator_reddit-video-api_assets
