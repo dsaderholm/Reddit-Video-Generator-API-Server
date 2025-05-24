@@ -118,28 +118,30 @@ class ProgressFfmpeg(threading.Thread):
         self.stop()
 
 def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: str, reddit_id: str, max_retries: int = 3) -> bool:
-    """Ultra-simplified Intel Arc hardware acceleration - just background video + title overlay + TTS audio."""
+    """Research-based Intel Arc hardware acceleration with proper drivers and syntax."""
     for attempt in range(max_retries):
         try:
-            threads = max(1, multiprocessing.cpu_count() - 1)
+            threads = min(16, max(1, multiprocessing.cpu_count() - 1))
             
             print(f"🚀 Attempting Intel Arc hardware encoding (attempt {attempt + 1})...")
             
-            # Method 1: Try Intel Arc QSV hardware encoding
+            # Method 1: Intel Arc-specific QSV (requires proper drivers)
             try:
-                print("🎯 Using Intel Arc QSV hardware acceleration...")
+                print("🎯 Using Intel Arc QSV (requires updated drivers)...")
                 
-                # Ultra-simple: background video + title overlay (first 8 seconds) + TTS audio only
                 cmd = [
-                    "ffmpeg", "-y",  # Overwrite output
+                    "ffmpeg", "-y",
                     "-progress", progress_file,
                     "-threads", str(threads),
-                    "-i", f"assets/temp/{reddit_id}/background_noaudio.mp4",  # Background video
-                    "-i", f"assets/temp/{reddit_id}/png/title.png",           # Title image
-                    "-i", f"assets/temp/{reddit_id}/audio.mp3",               # TTS audio only
-                    "-filter_complex", 
-                    "[0:v]scale=1080:1920[bg];[1:v]scale=486:486[title];[bg][title]overlay=(W-w)/2:(H-h)/2:enable='between(t,0,8)'[v]",
-                    "-map", "[v]", "-map", "2:a",  # Video from filter, audio from input 2 (TTS)
+                    # QSV-specific initialization
+                    "-init_hw_device", "qsv=hw",
+                    "-filter_hw_device", "hw",
+                    "-i", f"assets/temp/{reddit_id}/background_noaudio.mp4",
+                    "-i", f"assets/temp/{reddit_id}/png/title.png",
+                    "-i", f"assets/temp/{reddit_id}/audio.mp3",
+                    "-filter_complex",
+                    "[0:v]scale=1080:1920[bg];[1:v]scale=486:486[title];[bg][title]overlay=297:717:enable='between(t,0,8)',format=qsv,hwupload=extra_hw_frames=64[v]",
+                    "-map", "[v]", "-map", "2:a",
                     "-c:v", "h264_qsv",
                     "-preset", "medium",
                     "-global_quality", "23",
@@ -159,30 +161,29 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                     print("✅ Intel Arc QSV encoding successful!")
                     return True
                 else:
-                    print(f"⚠️ QSV failed: {result.stderr}")
+                    print(f"⚠️ QSV failed - likely driver issue (need intel-media-driver 22.5.2+)")
                     raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
                     
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-                print(f"⚠️ QSV failed, trying VA-API...")
+                print(f"⚠️ QSV failed, trying VA-API with software overlay...")
                 
-                # Method 2: Try VA-API hardware encoding
+                # Method 2: VA-API with software overlay (more compatible)
                 try:
-                    print("🔄 Trying Intel Arc VA-API...")
+                    print("🔄 Using VA-API with software preprocessing...")
                     
                     cmd = [
                         "ffmpeg", "-y",
                         "-progress", progress_file,
                         "-threads", str(threads),
-                        "-hwaccel", "vaapi",
-                        "-hwaccel_device", "/dev/dri/renderD128",
                         "-i", f"assets/temp/{reddit_id}/background_noaudio.mp4",
                         "-i", f"assets/temp/{reddit_id}/png/title.png",
                         "-i", f"assets/temp/{reddit_id}/audio.mp3",
                         "-filter_complex",
-                        "[0:v]scale=1080:1920,format=nv12,hwupload[bgv];[1:v]scale=486:486[title];[bgv][title]overlay_vaapi=(W-w)/2:(H-h)/2:enable='between(t,0,8)'[v]",
+                        # Software overlay first, then hardware upload (Intel Arc compatible)
+                        "[0:v]scale=1080:1920[bg];[1:v]scale=486:486[title];[bg][title]overlay=297:717:enable='between(t,0,8)',format=nv12,hwupload[v]",
                         "-map", "[v]", "-map", "2:a",
                         "-c:v", "h264_vaapi",
-                        "-profile:v", "high",
+                        "-vaapi_device", "/dev/dri/renderD128",
                         "-qp", "23",
                         "-c:a", "aac", "-b:a", "192k",
                         "-movflags", "+faststart",
@@ -200,12 +201,52 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                         print("✅ Intel Arc VA-API encoding successful!")
                         return True
                     else:
-                        print(f"⚠️ VA-API failed: {result.stderr}")
+                        print(f"⚠️ VA-API failed: {result.stderr[-200:] if result.stderr else 'Unknown error'}")
                         raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
                         
                 except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-                    print(f"⚠️ VA-API also failed, falling back to software...")
-                    raise e
+                    print(f"⚠️ VA-API also failed, trying basic VA-API...")
+                    
+                    # Method 3: Basic VA-API without hardware upload in filter
+                    try:
+                        print("🔄 Trying basic VA-API encoding...")
+                        
+                        cmd = [
+                            "ffmpeg", "-y",
+                            "-progress", progress_file,
+                            "-threads", str(threads),
+                            "-hwaccel", "vaapi",
+                            "-hwaccel_device", "/dev/dri/renderD128",
+                            "-hwaccel_output_format", "vaapi",
+                            "-i", f"assets/temp/{reddit_id}/background_noaudio.mp4",
+                            "-i", f"assets/temp/{reddit_id}/png/title.png",
+                            "-i", f"assets/temp/{reddit_id}/audio.mp3",
+                            "-filter_complex",
+                            "[0:v]scale_vaapi=1080:1920[bg];[1:v]format=yuv420p,hwupload,scale_vaapi=486:486[title];[bg][title]overlay_vaapi=x=297:y=717[v]",
+                            "-map", "[v]", "-map", "2:a",
+                            "-c:v", "h264_vaapi",
+                            "-qp", "23",
+                            "-c:a", "aac", "-b:a", "192k",
+                            path
+                        ]
+                        
+                        result = subprocess.run(
+                            cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=600
+                        )
+                        
+                        if result.returncode == 0:
+                            print("✅ Basic VA-API encoding successful!")
+                            return True
+                        else:
+                            print(f"⚠️ Basic VA-API also failed")
+                            raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
+                            
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+                        print(f"⚠️ All Intel Arc methods failed, falling back to software...")
+                        raise e
             
         except Exception as e:
             print(f"❌ Intel Arc encoding attempt {attempt + 1} failed:")
