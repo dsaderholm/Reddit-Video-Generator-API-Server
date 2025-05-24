@@ -118,147 +118,130 @@ class ProgressFfmpeg(threading.Thread):
         self.stop()
 
 def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: str, max_retries: int = 3) -> bool:
-    """Enhanced Intel Arc hardware acceleration using Jellyfin-FFmpeg."""
-    # Use jellyfin-ffmpeg for proper Intel Arc support
-    ffmpeg_cmd = "/usr/lib/jellyfin-ffmpeg/ffmpeg"
-    
+    """Enhanced Intel Arc hardware acceleration with proper FFmpeg and OneVPL support."""
     for attempt in range(max_retries):
         try:
             threads = max(1, multiprocessing.cpu_count() - 1)
             
-            print(f"🚀 Attempting Intel Arc hardware encoding with Jellyfin-FFmpeg (attempt {attempt + 1})...")
+            print(f"🚀 Attempting Intel Arc hardware encoding (attempt {attempt + 1})...")
             
             # Method 1: Try QSV first (Intel's preferred method for Arc GPUs)
             try:
-                print("🎯 Trying QSV (Quick Sync Video) with Jellyfin-FFmpeg...")
+                print("🎯 Trying QSV (Quick Sync Video) hardware acceleration...")
+                output = ffmpeg.output(
+                    background_clip,
+                    final_audio,
+                    path,
+                    f="mp4",
+                    **{
+                        # QSV hardware encoding (preferred for Intel Arc)
+                        "c:v": "h264_qsv",
+                        "preset": "medium",
+                        "global_quality": "23",  # ICQ mode for quality
+                        "maxrate": "25M",
+                        "bufsize": "50M",
+                        # Audio settings
+                        "c:a": "aac",
+                        "b:a": "192k",
+                        "threads": threads,
+                    }
+                ).overwrite_output().global_args("-progress", progress_file)
                 
-                # Build ffmpeg command manually since we need to use jellyfin-ffmpeg
-                cmd = [
-                    ffmpeg_cmd,
-                    "-y",  # Overwrite output
-                    "-progress", progress_file,
-                    "-i", "pipe:0",  # Input from pipe
-                    "-f", "mp4",
-                    "-c:v", "h264_qsv",
-                    "-preset", "medium",
-                    "-global_quality", "23",  # ICQ mode
-                    "-maxrate", "25M",
-                    "-bufsize", "50M",
-                    "-c:a", "aac",
-                    "-b:a", "192k",
-                    "-threads", str(threads),
-                    path
-                ]
-                
-                # Use subprocess to run jellyfin-ffmpeg directly
-                process = subprocess.run(
-                    cmd,
-                    input=ffmpeg.output(background_clip, final_audio, format='mpegts').run(capture_stdout=True),
-                    capture_output=True,
-                    timeout=1800  # 30 minute timeout
+                output.run(
+                    quiet=True,
+                    overwrite_output=True,
+                    capture_stdout=True,
+                    capture_stderr=True,
                 )
+                print("✅ Intel Arc QSV encoding successful!")
+                return True
                 
-                if process.returncode == 0:
-                    print("✅ Intel Arc QSV encoding with Jellyfin-FFmpeg successful!")
-                    return True
-                else:
-                    raise subprocess.CalledProcessError(process.returncode, cmd, process.stderr)
-                    
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as qsv_error:
+            except ffmpeg.Error as qsv_error:
                 print(f"⚠️ QSV failed, trying VA-API fallback...")
                 
                 # Method 2: Try VA-API as fallback
                 try:
-                    cmd = [
-                        ffmpeg_cmd,
-                        "-y",
-                        "-progress", progress_file,
-                        "-vaapi_device", "/dev/dri/renderD128",
-                        "-i", "pipe:0",
-                        "-vf", "format=nv12,hwupload",
-                        "-f", "mp4",
-                        "-c:v", "h264_vaapi",
-                        "-profile:v", "high",
-                        "-level", "4.0",
-                        "-b:v", "20M",
-                        "-maxrate", "25M",
-                        "-c:a", "aac",
-                        "-b:a", "192k",
-                        "-threads", str(threads),
-                        "-rc_mode", "CQP",
-                        "-qp", "23",
-                        path
-                    ]
+                    output = ffmpeg.output(
+                        background_clip,
+                        final_audio,
+                        path,
+                        f="mp4",
+                        **{
+                            # VA-API hardware encoding
+                            "c:v": "h264_vaapi",
+                            "vaapi_device": "/dev/dri/renderD128",
+                            "vf": "format=nv12,hwupload",
+                            "profile:v": "high",
+                            "level": "4.0",
+                            "b:v": "20M",
+                            "maxrate": "25M",
+                            "c:a": "aac",
+                            "b:a": "192k",
+                            "threads": threads,
+                            "rc_mode": "CQP",
+                            "qp": "23",
+                        }
+                    ).overwrite_output().global_args("-progress", progress_file)
                     
-                    process = subprocess.run(
-                        cmd,
-                        input=ffmpeg.output(background_clip, final_audio, format='mpegts').run(capture_stdout=True),
-                        capture_output=True,
-                        timeout=1800
+                    output.run(
+                        quiet=True,
+                        overwrite_output=True,
+                        capture_stdout=True,
+                        capture_stderr=True,
                     )
+                    print("✅ Intel Arc VA-API encoding successful!")
+                    return True
                     
-                    if process.returncode == 0:
-                        print("✅ Intel Arc VA-API encoding with Jellyfin-FFmpeg successful!")
-                        return True
-                    else:
-                        raise subprocess.CalledProcessError(process.returncode, cmd, process.stderr)
-                        
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as vaapi_error:
+                except ffmpeg.Error as vaapi_error:
                     print(f"⚠️ VA-API also failed, trying software fallback...")
                     raise vaapi_error
             
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as e:
+        except ffmpeg.Error as e:
             print(f"❌ Intel Arc hardware encoding attempt {attempt + 1} failed:")
-            if hasattr(e, 'stderr') and e.stderr:
-                error_msg = e.stderr.decode("utf8") if isinstance(e.stderr, bytes) else str(e.stderr)
+            if e.stderr:
+                error_msg = e.stderr.decode("utf8")
                 print("Error:", error_msg)
                 
                 # Check for specific Intel Arc/hardware issues
                 if "qsv" in error_msg.lower() or "mfx" in error_msg.lower():
-                    print("💡 Tip: Intel Media SDK/OneVPL may need to be installed or updated")
+                    print("💡 Tip: Intel OneVPL may need to be installed (libvpl2, onevpl-tools)")
                 elif "vaapi" in error_msg.lower():
                     print("💡 Tip: Check Intel GPU drivers and /dev/dri permissions")
                 elif "device" in error_msg.lower():
                     print("💡 Tip: GPU device may not be accessible - check Docker device mapping")
             
-            # Final attempt: software encoding with jellyfin-ffmpeg
+            # Final attempt: software encoding
             if attempt == max_retries - 1:
                 print(f"❌ All hardware encoding failed, using software fallback...")
                 try:
-                    cmd = [
-                        ffmpeg_cmd,
-                        "-y",
-                        "-progress", progress_file,
-                        "-i", "pipe:0",
-                        "-f", "mp4",
-                        "-c:v", "libx264",
-                        "-preset", "medium",
-                        "-crf", "23",
-                        "-b:v", "20M",
-                        "-c:a", "aac",
-                        "-b:a", "192k",
-                        "-threads", str(threads),
-                        "-movflags", "+faststart",
-                        "-pix_fmt", "yuv420p",
-                        path
-                    ]
-                    
-                    process = subprocess.run(
-                        cmd,
-                        input=ffmpeg.output(background_clip, final_audio, format='mpegts').run(capture_stdout=True),
-                        capture_output=True,
-                        timeout=1800
+                    ffmpeg.output(
+                        background_clip,
+                        final_audio,
+                        path,
+                        f="mp4",
+                        **{
+                            "c:v": "libx264",
+                            "preset": "medium",
+                            "crf": "23",
+                            "b:v": "20M",
+                            "c:a": "aac",
+                            "b:a": "192k",
+                            "threads": threads,
+                            "movflags": "+faststart",
+                            "pix_fmt": "yuv420p",
+                        },
+                    ).overwrite_output().global_args("-progress", progress_file).run(
+                        quiet=True,
+                        overwrite_output=True,
+                        capture_stdout=True,
+                        capture_stderr=True,
                     )
-                    
-                    if process.returncode == 0:
-                        print("✅ Software encoding successful")
-                        return True
-                    else:
-                        print(f"❌ All encoding methods failed")
-                        raise subprocess.CalledProcessError(process.returncode, cmd, process.stderr)
-                        
-                except Exception as final_error:
+                    print("✅ Software encoding successful")
+                    return True
+                except ffmpeg.Error as final_error:
                     print(f"❌ All encoding methods failed")
+                    if final_error.stderr:
+                        print("Final error:", final_error.stderr.decode("utf8"))
                     raise final_error
             
             print(f"🔄 Retrying... ({attempt + 1}/{max_retries})")
