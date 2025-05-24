@@ -75,10 +75,15 @@ def verify_files_exist(reddit_id: str, number_of_clips: int, is_story_mode: bool
         raise FileNotFoundError(f"Missing required files: {missing_files}")
 
 class ProgressFfmpeg(threading.Thread):
-    def __init__(self, vid_duration_seconds, progress_update_callback):
+    def __init__(self, vid_duration_seconds, progress_update_callback, progress_file_path=None):
         threading.Thread.__init__(self, name="ProgressFfmpeg")
         self.stop_event = threading.Event()
-        self.output_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+        if progress_file_path:
+            self.progress_file_path = progress_file_path
+            self.output_file = None
+        else:
+            self.output_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+            self.progress_file_path = self.output_file.name
         self.vid_duration_seconds = vid_duration_seconds
         self.progress_update_callback = progress_update_callback
 
@@ -92,16 +97,49 @@ class ProgressFfmpeg(threading.Thread):
 
     def get_latest_ms_progress(self):
         try:
-            self.output_file.seek(0)
-            lines = self.output_file.readlines()
+            # Read from the progress file directly
+            if os.path.exists(self.progress_file_path):
+                with open(self.progress_file_path, 'r') as f:
+                    lines = f.readlines()
+            elif self.output_file:
+                self.output_file.seek(0)
+                lines = self.output_file.readlines()
+            else:
+                return None
             
             if lines:
-                for line in lines:
-                    if "out_time_ms" in line:
+                # Look for different progress indicators that ffmpeg outputs
+                for line in reversed(lines):  # Start from the end for latest progress
+                    line = line.strip()
+                    if "out_time_ms=" in line:
                         out_time_ms_str = line.split("=")[1].strip()
                         if out_time_ms_str.isnumeric():
                             return float(out_time_ms_str) / 1000000.0
-                        return None
+                    elif "out_time=" in line:
+                        # Parse time format like "00:01:23.45" 
+                        time_str = line.split("=")[1].strip()
+                        try:
+                            # Convert HH:MM:SS.mmm to seconds
+                            parts = time_str.split(":")
+                            if len(parts) == 3:
+                                hours = float(parts[0])
+                                minutes = float(parts[1])
+                                seconds = float(parts[2])
+                                return hours * 3600 + minutes * 60 + seconds
+                        except ValueError:
+                            continue
+                    elif "time=" in line and "bitrate=" in line:
+                        # Another common format: "time=00:01:23.45 bitrate=..."
+                        try:
+                            time_part = line.split("time=")[1].split()[0]
+                            parts = time_part.split(":")
+                            if len(parts) == 3:
+                                hours = float(parts[0])
+                                minutes = float(parts[1]) 
+                                seconds = float(parts[2])
+                                return hours * 3600 + minutes * 60 + seconds
+                        except (ValueError, IndexError):
+                            continue
             return None
         except Exception as e:
             print(f"Error reading progress: {e}")
@@ -116,6 +154,11 @@ class ProgressFfmpeg(threading.Thread):
 
     def __exit__(self, *args, **kwargs):
         self.stop()
+    
+    @property
+    def output_file_name(self):
+        """Get the progress file path for compatibility."""
+        return self.progress_file_path
 
 def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: str, reddit_id: str, max_retries: int = 3) -> bool:
     """Research-based Intel Arc hardware acceleration with proper drivers and syntax."""
@@ -150,12 +193,15 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                     path
                 ]
                 
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=600
-                )
+                # Run with streaming output for progress tracking
+                with open(progress_file, 'w') as prog_file:
+                    result = subprocess.run(
+                        cmd,
+                        stdout=prog_file, 
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=600
+                    )
                 
                 if result.returncode == 0:
                     print("✅ Intel Arc QSV encoding successful!")
@@ -190,12 +236,15 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                         path
                     ]
                     
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=600
-                    )
+                    # Run with streaming output for progress tracking
+                    with open(progress_file, 'w') as prog_file:
+                        result = subprocess.run(
+                            cmd,
+                            stdout=prog_file,
+                            stderr=subprocess.PIPE, 
+                            text=True,
+                            timeout=600
+                        )
                     
                     if result.returncode == 0:
                         print("✅ Intel Arc VA-API encoding successful!")
@@ -230,12 +279,15 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
                             path
                         ]
                         
-                        result = subprocess.run(
-                            cmd,
-                            capture_output=True,
-                            text=True,
-                            timeout=600
-                        )
+                        # Run with streaming output for progress tracking
+                        with open(progress_file, 'w') as prog_file:
+                            result = subprocess.run(
+                                cmd,
+                                stdout=prog_file,
+                                stderr=subprocess.PIPE,
+                                text=True, 
+                                timeout=600
+                            )
                         
                         if result.returncode == 0:
                             print("✅ Basic VA-API encoding successful!")
@@ -278,36 +330,49 @@ def try_ffmpeg_output(background_clip, final_audio, path: str, progress_file: st
     print("🎯 Final attempt: Guaranteed software encoding...")
     try:
         threads = max(1, multiprocessing.cpu_count() - 1)
-        ffmpeg.output(
-            background_clip,
-            final_audio,
-            path,
-            f="mp4",
-            **{
-                "c:v": "libx264",
-                "preset": "medium",
-                "crf": "23",
-                "tune": "fastdecode",
-                "b:v": "20M",
-                "c:a": "aac",
-                "b:a": "192k",
-                "threads": threads,
-                "thread_type": "frame+slice",
-                "movflags": "+faststart",
-                "pix_fmt": "yuv420p",
-            },
-        ).overwrite_output().global_args("-progress", progress_file).run(
-            quiet=True,
-            overwrite_output=True,
-            capture_stdout=True,
-            capture_stderr=True,
-        )
-        print("✅ Software encoding successful!")
-        return True
-    except ffmpeg.Error as final_error:
-        print(f"❌ Even software encoding failed:")
-        if final_error.stderr:
-            print("Final error:", final_error.stderr.decode("utf8"))
+        
+        cmd = [
+            "ffmpeg", "-y",
+            "-progress", progress_file,
+            "-threads", str(threads),
+            "-i", f"assets/temp/{reddit_id}/background_noaudio.mp4",
+            "-i", f"assets/temp/{reddit_id}/png/title.png",
+            "-i", f"assets/temp/{reddit_id}/audio.mp3",
+            "-filter_complex",
+            "[0:v]scale=1080:1920[bg];[1:v]scale=486:486[title];[bg][title]overlay=297:717:enable='between(t,0,8)'[v]",
+            "-map", "[v]", "-map", "2:a",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "23",
+            "-tune", "fastdecode",
+            "-b:v", "20M",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            "-pix_fmt", "yuv420p",
+            path
+        ]
+        
+        with open(progress_file, 'w') as prog_file:
+            result = subprocess.run(
+                cmd,
+                stdout=prog_file,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=600
+            )
+        
+        if result.returncode == 0:
+            print("✅ Software encoding successful!")
+            return True
+        else:
+            print(f"❌ Even software encoding failed:")
+            if result.stderr:
+                print("Final error:", result.stderr)
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
+            
+    except Exception as final_error:
+        print(f"❌ Software encoding exception: {final_error}")
         raise final_error
 
 def name_normalize(name: str) -> str:
@@ -654,13 +719,14 @@ def make_final_video(
         path = defaultPath + f"/{filename}"
         path = path[:251] + ".mp4"  # Limit path length
         
-        with ProgressFfmpeg(length, on_update_example) as progress:
+        progress_file = f"assets/temp/{reddit_id}/progress.txt"
+        with ProgressFfmpeg(length, on_update_example, progress_file) as progress:
             try:
                 try_ffmpeg_output(
                 background_clip,
                 final_audio,
                 path,
-                progress.output_file.name,
+                progress_file,
                     reddit_id
                     )
             except ffmpeg.Error as e:
@@ -675,13 +741,14 @@ def make_final_video(
             path = path[:251] + ".mp4"
             print_step("Rendering the Only TTS Video 🎥")
             
-            with ProgressFfmpeg(length, on_update_example) as progress:
+            progress_file_tts = f"assets/temp/{reddit_id}/progress_tts.txt"
+            with ProgressFfmpeg(length, on_update_example, progress_file_tts) as progress:
                 try:
                     try_ffmpeg_output(
                         background_clip,
                         audio,
                         path,
-                        progress.output_file.name,
+                        progress_file_tts,
                         reddit_id
                     )
                 except ffmpeg.Error as e:
