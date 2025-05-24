@@ -15,7 +15,10 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch==2.3.1 \
+    && pip install --no-cache-dir intel-extension-for-pytorch==2.3.110+xpu \
+    --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/ \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Copy application
 COPY . .
