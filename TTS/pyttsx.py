@@ -38,14 +38,83 @@ class pyttsx:
             'FTFY': 'fixed that for you',
             'IANAL': 'I am not a lawyer',
             'IME': 'in my experience',
-            'GF': 'girl friend',
-            'BF': 'boy friend',
+            'GF': 'girlfriend',
+            'BF': 'boyfriend',
             'MIL': 'mother in law',
             'FIL': 'father in law',
             'SIL': 'sister in law',
             'BIL': 'brother in law',
             'WIBTAH': 'would I be the ay hole',
             'WIBTA': 'would I be the ay hole',
+            'YTA': 'you are the ay hole',
+            'NTA': 'not the ay hole',
+            'ESH': 'everyone sucks here',
+            'NAH': 'no ay holes here',
+            'INFO': 'need more information',
+            'SO': 'significant other',
+            'DH': 'dear husband',
+            'DW': 'dear wife',
+            'DS': 'dear son',
+            'DD': 'dear daughter',
+            'LO': 'little one',
+            'LOs': 'little ones',
+            'DV': 'domestic violence',
+            'SA': 'sexual assault',
+            'NC': 'no contact',
+            'LC': 'low contact',
+            'VLC': 'very low contact',
+            'JN': 'just no',
+            'JY': 'just yes',
+            'FOO': 'family of origin',
+            'FOC': 'family of choice',
+            'STBX': 'soon to be ex',
+            'STBXH': 'soon to be ex husband',
+            'STBXW': 'soon to be ex wife',
+            'AP': 'affair partner',
+            'OW': 'other woman',
+            'OM': 'other man',
+            'WS': 'wayward spouse',
+            'BS': 'betrayed spouse',
+            'MC': 'marriage counseling',
+            'IC': 'individual counseling',
+            'CC': 'couples counseling',
+            'STD': 'sexually transmitted disease',
+            'STI': 'sexually transmitted infection',
+            'ED': 'eating disorder',
+            'ADHD': 'attention deficit hyperactivity disorder',
+            'OCD': 'obsessive compulsive disorder',
+            'PTSD': 'post traumatic stress disorder',
+            'BPD': 'borderline personality disorder',
+            'NPD': 'narcissistic personality disorder',
+            'HR': 'human resources',
+            'CEO': 'chief executive officer',
+            'CFO': 'chief financial officer',
+            'CTO': 'chief technology officer',
+            'IT': 'information technology',
+            'PR': 'public relations',
+            'FAQ': 'frequently asked questions',
+            'AMA': 'ask me anything',
+            'TIL': 'today I learned',
+            'LPT': 'life pro tip',
+            'PSA': 'public service announcement',
+            'CMV': 'change my view',
+            'DAE': 'does anyone else',
+            'ELI5': 'explain like I am five',
+            'YMMV': 'your mileage may vary',
+            'YOLO': 'you only live once',
+            'SMH': 'shaking my head',
+            'TBH': 'to be honest',
+            'ITT': 'in this thread',
+            'OP': 'original poster',
+            'OOP': 'original original poster',
+            'BORU': 'best of reddit updates',
+            'UPDATE': 'update',
+            'EDIT': 'edit',
+            'FINAL UPDATE': 'final update',
+            'MOOD SPOILER': 'mood spoiler',
+            'TRIGGER WARNING': 'trigger warning',
+            'TW': 'trigger warning',
+            'CW': 'content warning',
         }
 
         # YouTube-unfriendly words with their substitutions
@@ -135,31 +204,27 @@ class pyttsx:
         def replace_match(match):
             try:
                 groups = match.groups()
-                print(f"DEBUG: Matched groups: {groups}")
                 
-                # First pattern: digits followed by letter (e.g., 24F, 30M)
+                # For pattern \(([MF])(\d{1,2})\) - groups are (gender, age)
                 if groups[0] and groups[1]:
-                    age_str = groups[0]
-                    gender_char = groups[1]
-                # Second pattern: letter followed by digits (e.g., M30, F24)
+                    gender_char = groups[0]
+                    age_str = groups[1]
+                # For pattern \((\d{1,2})([MF])\) - groups are (age, gender)
                 elif groups[2] and groups[3]:
-                    gender_char = groups[2]
-                    age_str = groups[3]
+                    age_str = groups[2]
+                    gender_char = groups[3]
                 else:
                     # If we can't parse it properly, return original match
-                    print(f"DEBUG: Could not parse groups properly: {groups}")
                     return match.group(0)
                 
                 # Validate that age_str is actually numeric
                 if not age_str.isdigit():
-                    print(f"DEBUG: Age string is not numeric: '{age_str}'")
                     return match.group(0)
                     
                 age = int(age_str)
                 
                 # Validate age is reasonable (between 1 and 120)
                 if age < 1 or age > 120:
-                    print(f"DEBUG: Age {age} is not reasonable")
                     return match.group(0)
                 
                 if age < 18:
@@ -168,20 +233,17 @@ class pyttsx:
                     gender = 'woman' if gender_char.upper() == 'F' else 'man'
 
                 result = f"a {age}-year-old {gender}"
-                print(f"DEBUG: Converting '{match.group(0)}' to '{result}'")
                 return result
                 
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError, IndexError) as e:
                 print(f"Error parsing age/gender format: {match.group(0)}, Error: {e}")
                 # Return original text if parsing fails
                 return match.group(0)
 
         # Pattern specifically for Reddit age/gender format: (M30), (F24), (30M), (24F)
-        # More restrictive to avoid false matches
-        pattern = r'\(?\b(\d{1,2})([MF])\b\)?|\(?\b([MF])(\d{1,2})\b\)?'
-        print(f"DEBUG: Processing text: '{text}'")
+        # Using two separate patterns combined with OR
+        pattern = r'\(([MF])(\d{1,2})\)|\((\d{1,2})([MF])\)'
         result = re.sub(pattern, replace_match, text, flags=re.IGNORECASE)
-        print(f"DEBUG: Result: '{result}'")
         return result
 
     def _convert_time_format(self, text):
@@ -195,16 +257,12 @@ class pyttsx:
 
     def _preprocess_text(self, text):
         """Process Reddit shorthand and formatting"""
-        print(f"DEBUG: Starting preprocessing of: '{text}'")
-        
         # Filter YouTube-unfriendly content first
         text = self._filter_youtube_unfriendly_content(text)
-        print(f"DEBUG: After YouTube filtering: '{text}'")
         
         # Handle age/gender formats
         try:
             text = self._convert_age_gender(text)
-            print(f"DEBUG: After age/gender conversion: '{text}'")
         except Exception as e:
             print(f"ERROR in age/gender conversion: {e}")
             import traceback
@@ -212,7 +270,6 @@ class pyttsx:
         
         # Convert time formats
         text = self._convert_time_format(text)
-        print(f"DEBUG: After time conversion: '{text}'")
         
         # Replace Reddit abbreviations
         for shorthand, full_text in self.reddit_mappings.items():
@@ -221,7 +278,6 @@ class pyttsx:
         # Clean up any extra spaces
         text = ' '.join(text.split())
         
-        print(f"DEBUG: Final preprocessed text: '{text}'")
         return text
 
     def _adjust_audio_pitch(self, input_path, output_path):
