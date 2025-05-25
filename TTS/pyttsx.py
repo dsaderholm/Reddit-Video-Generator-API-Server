@@ -133,17 +133,56 @@ class pyttsx:
     def _convert_age_gender(self, text):
         """Convert age/gender format (e.g., 24F, 25M, M17, F42) to written form with appropriate age-based terms"""
         def replace_match(match):
-            age = int(match.group(1) or match.group(3))  # Capture age from either position
-            gender_char = match.group(2) or match.group(4)  # Capture gender character
+            try:
+                groups = match.groups()
+                print(f"DEBUG: Matched groups: {groups}")
+                
+                # First pattern: digits followed by letter (e.g., 24F, 30M)
+                if groups[0] and groups[1]:
+                    age_str = groups[0]
+                    gender_char = groups[1]
+                # Second pattern: letter followed by digits (e.g., M30, F24)
+                elif groups[2] and groups[3]:
+                    gender_char = groups[2]
+                    age_str = groups[3]
+                else:
+                    # If we can't parse it properly, return original match
+                    print(f"DEBUG: Could not parse groups properly: {groups}")
+                    return match.group(0)
+                
+                # Validate that age_str is actually numeric
+                if not age_str.isdigit():
+                    print(f"DEBUG: Age string is not numeric: '{age_str}'")
+                    return match.group(0)
+                    
+                age = int(age_str)
+                
+                # Validate age is reasonable (between 1 and 120)
+                if age < 1 or age > 120:
+                    print(f"DEBUG: Age {age} is not reasonable")
+                    return match.group(0)
+                
+                if age < 18:
+                    gender = 'girl' if gender_char.upper() == 'F' else 'boy'
+                else:
+                    gender = 'woman' if gender_char.upper() == 'F' else 'man'
 
-            if age < 18:
-                gender = 'girl' if gender_char.upper() == 'F' else 'boy'
-            else:
-                gender = 'woman' if gender_char.upper() == 'F' else 'man'
+                result = f"a {age}-year-old {gender}"
+                print(f"DEBUG: Converting '{match.group(0)}' to '{result}'")
+                return result
+                
+            except (ValueError, TypeError) as e:
+                print(f"Error parsing age/gender format: {match.group(0)}, Error: {e}")
+                # Return original text if parsing fails
+                return match.group(0)
 
-            return f"a {age}-year-old {gender}"
-
-        return re.sub(r'(\d+)([MF])\b|([MF])(\d+)\b', replace_match, text, flags=re.IGNORECASE)
+        # Pattern specifically for Reddit age/gender format: (M30), (F24), (30M), (24F)
+        # More restrictive to avoid false matches
+        pattern = r'\(?\b(\d{1,2})([MF])\b\)?|\(?\b([MF])(\d{1,2})\b\)?'
+        print(f"DEBUG: Processing text: '{text}'")
+        result = re.sub(pattern, replace_match, text, flags=re.IGNORECASE)
+        print(f"DEBUG: Result: '{result}'")
+        return result
 
     def _convert_time_format(self, text):
         """Convert time formats (e.g., 5pm, 10AM) to simple spoken form"""
@@ -156,14 +195,24 @@ class pyttsx:
 
     def _preprocess_text(self, text):
         """Process Reddit shorthand and formatting"""
+        print(f"DEBUG: Starting preprocessing of: '{text}'")
+        
         # Filter YouTube-unfriendly content first
         text = self._filter_youtube_unfriendly_content(text)
+        print(f"DEBUG: After YouTube filtering: '{text}'")
         
         # Handle age/gender formats
-        text = self._convert_age_gender(text)
+        try:
+            text = self._convert_age_gender(text)
+            print(f"DEBUG: After age/gender conversion: '{text}'")
+        except Exception as e:
+            print(f"ERROR in age/gender conversion: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Convert time formats
         text = self._convert_time_format(text)
+        print(f"DEBUG: After time conversion: '{text}'")
         
         # Replace Reddit abbreviations
         for shorthand, full_text in self.reddit_mappings.items():
@@ -172,6 +221,7 @@ class pyttsx:
         # Clean up any extra spaces
         text = ' '.join(text.split())
         
+        print(f"DEBUG: Final preprocessed text: '{text}'")
         return text
 
     def _adjust_audio_pitch(self, input_path, output_path):
@@ -275,6 +325,8 @@ class pyttsx:
             
         except Exception as e:
             print(f"TTS Error: {str(e)}")
+            import traceback
+            print(f"Full traceback: {traceback.format_exc()}")
             return False
 
 if __name__ == "__main__":
