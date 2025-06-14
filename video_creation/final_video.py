@@ -490,6 +490,13 @@ def make_final_video(
     opacity = settings.config["settings"]["opacity"]
     reddit_id = re.sub(r"[^\w\s-]", "", reddit_obj["thread_id"])
     
+    # Clean up any existing temp files for this reddit_id before starting
+    temp_dir = f"assets/temp/{reddit_id}"
+    if os.path.exists(temp_dir):
+        print_substep(f"Cleaning up existing temp files for {reddit_id}")
+        import shutil
+        shutil.rmtree(temp_dir)
+    
     # Ensure all base directories exist with proper permissions
     base_dirs = [
         "assets",
@@ -546,12 +553,26 @@ def make_final_video(
             audio_clips.insert(0, ffmpeg.input(f"assets/temp/{reddit_id}/mp3/title.mp3"))
 
         # Concatenate audio clips
-        audio_concat = ffmpeg.concat(*audio_clips, a=1, v=0)
-        ffmpeg.output(
-            audio_concat, 
-            f"assets/temp/{reddit_id}/audio.mp3",
-            **{"b:a": "192k"}
-        ).overwrite_output().run(quiet=True)
+        print(f"Audio clips to concatenate: {len(audio_clips)}")
+        for i, clip in enumerate(audio_clips):
+            print(f"Audio clip {i}: {clip}")
+        
+        if len(audio_clips) == 1:
+            # Only one audio file, copy it directly
+            audio_input = audio_clips[0]
+            ffmpeg.output(
+                audio_input,
+                f"assets/temp/{reddit_id}/audio.mp3",
+                **{"b:a": "192k"}
+            ).overwrite_output().run(quiet=True)
+        else:
+            # Multiple audio files, concatenate them
+            audio_concat = ffmpeg.concat(*audio_clips, a=1, v=0)
+            ffmpeg.output(
+                audio_concat, 
+                f"assets/temp/{reddit_id}/audio.mp3",
+                **{"b:a": "192k"}
+            ).overwrite_output().run(quiet=True)
 
         # Get audio durations
         audio_clips_durations = []
