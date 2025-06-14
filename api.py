@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Global lock to prevent concurrent video generation
+generation_lock = threading.Lock()
+generation_in_progress = False
+
 TEMP_DIR = "/app/assets/temp"
 RESULTS_DIR = "/app/results"
 CONFIG_PATH = "/app/config.toml"
@@ -147,6 +151,15 @@ def find_latest_video():
 
 @app.route('/generate', methods=['POST'])
 def generate_video():
+    global generation_in_progress
+    
+    # Check if generation is already in progress
+    with generation_lock:
+        if generation_in_progress:
+            logger.warning("Video generation already in progress, rejecting request")
+            return jsonify({"error": "Video generation already in progress. Please wait."}), 429
+        generation_in_progress = True
+    
     try:
         logger.debug("Starting video generation process")
         clean_temp()
@@ -192,6 +205,10 @@ def generate_video():
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+    finally:
+        # Always reset the generation flag
+        with generation_lock:
+            generation_in_progress = False
 
 @app.route('/health', methods=['GET'])
 def health_check():
