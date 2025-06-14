@@ -490,12 +490,12 @@ def make_final_video(
     opacity = settings.config["settings"]["opacity"]
     reddit_id = re.sub(r"[^\w\s-]", "", reddit_obj["thread_id"])
     
-    # Clean up any existing temp files for this reddit_id before starting
+    # Ensure temp directory exists (don't delete existing files we need!)
     temp_dir = f"assets/temp/{reddit_id}"
-    if os.path.exists(temp_dir):
-        print_substep(f"Cleaning up existing temp files for {reddit_id}")
-        import shutil
-        shutil.rmtree(temp_dir)
+    # Only create directory if it doesn't exist - don't delete existing files
+    if not os.path.exists(temp_dir):
+        print_substep(f"Creating temp directory for {reddit_id}")
+        os.makedirs(temp_dir, exist_ok=True)
     
     # Ensure all base directories exist with proper permissions
     base_dirs = [
