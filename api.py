@@ -182,17 +182,25 @@ def generate_video():
             return jsonify({"error": "Video file not found"}), 500
             
         try:
+            # Get file info for logging
+            file_size = os.path.getsize(video_path)
+            file_name = os.path.basename(video_path)
+            logger.info(f"Sending video file: {file_name} ({file_size} bytes)")
+            
             response = send_file(
                 video_path,
                 mimetype='video/mp4',
                 as_attachment=True,
-                download_name=os.path.basename(video_path)
+                download_name=file_name
             )
+            
+            logger.info(f"Video file sent successfully: HTTP 200 with {file_name}")
             
             # Clean up after successful send
             try:
                 os.remove(video_path)
                 clean_temp()
+                logger.debug("Cleanup completed successfully")
             except Exception as e:
                 logger.warning(f"Cleanup error (non-fatal): {str(e)}")
             
@@ -216,8 +224,30 @@ def health_check():
         "status": "healthy",
         "temp_dir_exists": os.path.exists(TEMP_DIR),
         "results_dir_exists": os.path.exists(RESULTS_DIR),
-        "config_exists": os.path.exists(CONFIG_PATH)
+        "config_exists": os.path.exists(CONFIG_PATH),
+        "generation_in_progress": generation_in_progress
     }), 200
+
+@app.route('/status', methods=['GET'])
+def get_status():
+    """Get current generation status"""
+    try:
+        subreddits = get_subreddit_path()
+        results_path = os.path.join(RESULTS_DIR, subreddits)
+        
+        video_files = []
+        if os.path.exists(results_path):
+            video_files = [f for f in os.listdir(results_path) 
+                          if f.endswith('.mp4') and f != 'background.mp4']
+        
+        return jsonify({
+            "generation_in_progress": generation_in_progress,
+            "results_directory": results_path,
+            "video_files_count": len(video_files),
+            "latest_videos": video_files[-3:] if video_files else []
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # Initialize Intel Arc GPU on startup
