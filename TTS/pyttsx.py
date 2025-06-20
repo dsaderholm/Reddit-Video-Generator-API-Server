@@ -45,18 +45,29 @@ class pyttsx:
         self.nlp = None
         if HAS_SCISPACY:
             try:
-                self.nlp = spacy.load("en_core_sci_sm")
-                self.nlp.add_pipe("abbreviation_detector")
+                # Suppress spaCy warnings during initialization
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    self.nlp = spacy.load("en_core_sci_sm")
+                    self.nlp.add_pipe("abbreviation_detector")
                 print("🚀 SciSpacy loaded - automatic abbreviation detection ACTIVE!")
             except OSError:
                 # Model not available, fallback to basic model
                 try:
-                    self.nlp = spacy.load("en_core_web_sm")
-                    self.nlp.add_pipe("abbreviation_detector")
+                    import warnings
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        self.nlp = spacy.load("en_core_web_sm")
+                        self.nlp.add_pipe("abbreviation_detector")
                     print("📚 Basic spaCy loaded - abbreviation detection active!")
                 except OSError:
                     self.nlp = None
                     print("⚠️ No spaCy models available")
+            except Exception as e:
+                # Catch any other initialization errors
+                print(f"⚠️ SciSpacy initialization warning (non-critical): {str(e)[:100]}...")
+                self.nlp = None
         
         # Reddit-specific abbreviations (high confidence)
         self.reddit_specific = {
@@ -265,13 +276,18 @@ class pyttsx:
             return {}
             
         try:
-            doc = self.nlp(text)
-            abbreviations = {}
-            for abbrev in doc._.abbreviations:
-                abbreviations[str(abbrev)] = str(abbrev._.long_form)
-            return abbreviations
+            # Suppress warnings during processing
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                doc = self.nlp(text)
+                abbreviations = {}
+                if hasattr(doc._, 'abbreviations'):
+                    for abbrev in doc._.abbreviations:
+                        abbreviations[str(abbrev)] = str(abbrev._.long_form)
+                return abbreviations
         except Exception as e:
-            print(f"Error in automatic abbreviation detection: {e}")
+            # Silently handle any errors - this is non-critical
             return {}
 
     def _convert_age_gender(self, text):
