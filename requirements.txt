@@ -24,3 +24,8 @@ numpy==1.26.4
 vosk 
 pydantic==2.7.4
 torch==2.3.1
+
+# Enhanced TTS features for BEST Reddit videos!
+inflect==7.0.0
+scispacy==0.5.4
+abbreviations==0.2.2
