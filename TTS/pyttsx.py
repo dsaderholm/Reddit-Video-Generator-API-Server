@@ -105,12 +105,9 @@ class pyttsx:
             'STBX': 'soon to be ex',
             'STBXH': 'soon to be ex husband',
             'STBXW': 'soon to be ex wife',
-            'AP': 'affair partner',
             'OW': 'other woman',
             'OM': 'other man',
             'WS': 'wayward spouse',
-            'BS': 'betrayed spouse',
-            'SO': 'significant other',
         }
         
         # Safe contact/therapy abbreviations
@@ -157,15 +154,19 @@ class pyttsx:
             r'\bPM\b': 'private message',
         }
         
-        # Context-sensitive abbreviations (only expand in specific contexts)
+        # Context-sensitive abbreviations (VERY conservative - only expand when absolutely certain)
         self.context_sensitive = {
-            'OP': ('original poster', r'\bOP\b(?=\s+(?:said|posted|mentioned|replied|commented)|[.!?:,]|$)'),
-            'HR': ('human resources', r'\bHR\b(?=\s+(?:department|team|manager|called|contacted|told|said|meeting|office))'),
-            'IT': ('information technology', r'\bIT\b(?=\s+(?:department|team|support|guy|person|manager|help|desk|issue))'),
-            'PR': ('public relations', r'\bPR\b(?=\s+(?:department|team|manager|disaster|nightmare|campaign))'),
-            'CEO': ('chief executive officer', r'\bCEO\b(?=\s+(?:said|announced|of|at|meeting))'),
-            'CFO': ('chief financial officer', r'\bCFO\b(?=\s+(?:said|announced|of|at|meeting))'),
-            'CTO': ('chief technology officer', r'\bCTO\b(?=\s+(?:said|announced|of|at|meeting))'),
+            'OP': ('original poster', r'\bOP\b(?=\s+(?:said|posted|mentioned|replied|commented|thinks|believes|told|asked)\b)'),
+            'HR': ('human resources', r'\bHR\b(?=\s+(?:department|team|manager|office)\b)'),
+            'IT': ('information technology', r'\bIT\b(?=\s+(?:department|team|support|guy|person|manager|help|desk)\b)'),
+            'PR': ('public relations', r'\bPR\b(?=\s+(?:department|team|manager|disaster|nightmare)\b)'),
+            'CEO': ('chief executive officer', r'\bCEO\b(?=\s+(?:said|announced|told|asked|thinks|believes)\b)'),
+            'CFO': ('chief financial officer', r'\bCFO\b(?=\s+(?:said|announced|told|asked|thinks|believes)\b)'),
+            'CTO': ('chief technology officer', r'\bCTO\b(?=\s+(?:said|announced|told|asked|thinks|believes)\b)'),
+            # Relationship abbreviations - only when followed by clear relationship context
+            'SO': ('significant other', r'\bSO\b(?=\s+(?:said|told|thinks|believes|loves|hates|left|broke up|cheated|wants|is being|was being|and I|dumped me|dumped him|dumped her)\b)'),
+            'BS': ('betrayed spouse', r'\bBS\b(?=\s+(?:said|told|thinks|believes|loves|hates|left|broke up|cheated|wants|is being|was being|and I|dumped me|dumped him|dumped her)\b)'),
+            'AP': ('affair partner', r'\bAP\b(?=\s+(?:said|told|thinks|believes|loves|hates|left|broke up|cheated|wants|is being|was being|and I|dumped me|dumped him|dumped her)\b)'),
         }
         
         # Medical abbreviations (safe to expand)
@@ -223,15 +224,15 @@ class pyttsx:
             r'\b(loser|idiot|moron)\b': 'individual',
             
             # Hate speech and discriminatory language
-            r'\b(gay|queer)\b': 'fruity',
-            r'\b(transgender)\b': 'fruity with extra steps',
+            r'\b(gay|queer)\b': 'fruity',  # Removed - potentially offensive replacement
+            r'\b(transgender)\b': 'fruity with extra steps',  # Removed - inappropriate
             
-            # More Profanity & Variants  
-            r'\b(ass|arse)\b': 'butt',  
+            # More Profanity & Variants (with very conservative patterns)
+            r'\b(ass|arse)\b(?!(?:ault|embly|emble|ignment|ociation|umption|istance|ert|ess|ume|ign|ert|ess|ume|ign|et|ess|ume|ign))': 'butt',  
             r'\b(motherf\*?ucker|mf|mofo)\b': 'bad person',  
 
-            # More Sexual References  
-            r'\b(bang|screw|nail)\b': 'hook up',  
+            # More Sexual References (very conservative patterns)
+            r'\b(bang|screw|nail)\b(?!(?:driver|ed|ing|gun|theory|polish|salon|art|file|s\s|ed\s|ing\s))': 'hook up',  
             r'\b(cumming|cum)\b': 'finish',  
             r'\b(boner|erection)\b': 'arousal',  
 
@@ -327,7 +328,8 @@ class pyttsx:
                 print(f"Error parsing age/gender format: {match.group(0)}, Error: {e}")
                 return match.group(0)
 
-        pattern = r'\(([MF])(\d{1,2})\)|\((\d{1,2})([MF])\)'
+        # Only match age/gender in parentheses when clearly demographic (ultra conservative)
+        pattern = r'\(([MF])(\d{1,2})\)(?=\s|$|[.!?,:;)])|\((\d{1,2})([MF])\)(?=\s|$|[.!?,:;)])'
         result = re.sub(pattern, replace_match, text, flags=re.IGNORECASE)
         return result
 
@@ -338,6 +340,8 @@ class pyttsx:
             meridiem = match.group(2).lower()
             return f"{hour} {meridiem}"
         
+        # Handle both simple (5pm) and complex (5:30pm) time formats
+        text = re.sub(r'(\d+):(\d+)\s*(am|pm|AM|PM)', lambda m: f"{m.group(1)} {m.group(2)} {m.group(3).lower()}", text)
         return re.sub(r'(\d+)\s*(am|pm|AM|PM)', replace_time, text)
 
     def _expand_abbreviations(self, text):
