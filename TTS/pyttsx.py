@@ -295,42 +295,57 @@ class pyttsx:
         """Convert age/gender format (e.g., 24F, 25M, M17, F42) to written form"""
         def replace_match(match):
             try:
-                groups = match.groups()
+                full_match = match.group(0)
                 
-                # For pattern \(([MF])(\d{1,2})\) - groups are (gender, age)
-                if groups[0] and groups[1]:
-                    gender_char = groups[0]
-                    age_str = groups[1]
-                # For pattern \((\d{1,2})([MF])\) - groups are (age, gender)
-                elif groups[2] and groups[3]:
-                    age_str = groups[2]
-                    gender_char = groups[3]
+                # Extract age and gender from different possible formats
+                if match.group(1) and match.group(2):  # (M24) or (F24)
+                    gender_char = match.group(1)
+                    age_str = match.group(2)
+                elif match.group(3) and match.group(4):  # (24M) or (24F)
+                    age_str = match.group(3)
+                    gender_char = match.group(4)
+                elif match.group(5) and match.group(6):  # M24 or F24 (no parens)
+                    gender_char = match.group(5)
+                    age_str = match.group(6)
+                elif match.group(7) and match.group(8):  # 24M or 24F (no parens)
+                    age_str = match.group(7)
+                    gender_char = match.group(8)
                 else:
-                    return match.group(0)
+                    return full_match
                 
                 if not age_str.isdigit():
-                    return match.group(0)
+                    return full_match
                     
                 age = int(age_str)
                 
+                # Reasonable age bounds
                 if age < 1 or age > 120:
-                    return match.group(0)
+                    return full_match
                 
+                # Convert to descriptive text
                 if age < 18:
                     gender = 'girl' if gender_char.upper() == 'F' else 'boy'
                 else:
                     gender = 'woman' if gender_char.upper() == 'F' else 'man'
 
-                result = f"a {age}-year-old {gender}"
-                return result
+                return f"a {age}-year-old {gender}"
                 
             except (ValueError, TypeError, IndexError) as e:
-                print(f"Error parsing age/gender format: {match.group(0)}, Error: {e}")
-                return match.group(0)
+                print(f"Error parsing age/gender format: {full_match}, Error: {e}")
+                return full_match
 
-        # Only match age/gender in parentheses when clearly demographic (ultra conservative)
-        pattern = r'\(([MF])(\d{1,2})\)(?=\s|$|[.!?,:;)])|\((\d{1,2})([MF])\)(?=\s|$|[.!?,:;)])'
-        result = re.sub(pattern, replace_match, text, flags=re.IGNORECASE)
+        # More comprehensive pattern matching:
+        # 1. In parentheses: (M24), (F24), (24M), (24F)
+        # 2. Standalone: M24, F24, 24M, 24F (with word boundaries)
+        # 3. Common contexts like "I'm 24F" or "My friend (25M)"
+        pattern = r'''
+            \(([MF])(\d{1,2})\)|           # (M24) or (F24)
+            \((\d{1,2})([MF])\)|           # (24M) or (24F)
+            \b([MF])(\d{1,2})\b|           # M24 or F24 standalone
+            \b(\d{1,2})([MF])\b            # 24M or 24F standalone
+        '''
+        
+        result = re.sub(pattern, replace_match, text, flags=re.IGNORECASE | re.VERBOSE)
         return result
 
     def _convert_time_format(self, text):
